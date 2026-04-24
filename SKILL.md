@@ -19,19 +19,38 @@ Then deliver the generated file with a `MEDIA:/absolute/path.png` line.
 
 ## API key
 
-The script reads the API key from one of these sources, in order:
+This skill uses its own private config only:
 
-1. `--api-key` argument
-2. `OPUS_API_KEY` environment variable
-3. `~/.openclaw/agents/main/agent/auth-profiles.json` profile `openai:opus-qzz`
-4. `models.providers.openai.apiKey` in `~/.openclaw/openclaw.json`
+```text
+~/.openclaw/visual-studio/config.json
+```
+
+It must not read or modify OpenClaw model/provider config or auth profiles.
+
+Set the key:
+
+```bash
+python3 scripts/opus_image.py setkey '<opus-api-key>'
+```
+
+Clear the key:
+
+```bash
+python3 scripts/opus_image.py clearkey
+```
+
+Check status without revealing the key:
+
+```bash
+python3 scripts/opus_image.py status
+```
 
 Prefer not to print or echo the key.
 
 ## Typical use
 
 ```bash
-python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py \
+python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
   --prompt '一只可爱盆栽吉祥物，贴纸风格，白色背景' \
   --output /tmp/opus-image.png \
   --size 1024x1024

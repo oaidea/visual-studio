@@ -17,6 +17,7 @@ DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
 DEFAULT_MODEL = "gpt-image-2"
 DEFAULT_SIZE = "1024x1024"
 DEFAULT_OUTPUT = "/tmp/opus-image.png"
+CONFIG_PATH = Path.home() / ".openclaw/visual-studio/config.json"
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -26,26 +27,46 @@ def _load_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _write_private_json(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    os.chmod(tmp, 0o600)
+    tmp.replace(path)
+
+
+def set_api_key(api_key: str, base_url: str = DEFAULT_BASE_URL) -> None:
+    key = api_key.strip()
+    if not key:
+        raise ValueError("empty API key")
+    _write_private_json(CONFIG_PATH, {"apiKey": key, "baseUrl": base_url.rstrip("/")})
+
+
+def clear_api_key() -> bool:
+    if CONFIG_PATH.exists():
+        CONFIG_PATH.unlink()
+        return True
+    return False
+
+
 def resolve_api_key(explicit: str | None) -> str | None:
     if explicit and explicit.strip():
         return explicit.strip()
-    env = os.environ.get("OPUS_API_KEY")
-    if env and env.strip():
-        return env.strip()
-
-    auth_path = Path.home() / ".openclaw/agents/main/agent/auth-profiles.json"
-    auth = _load_json(auth_path)
-    profile = (auth or {}).get("profiles", {}).get("openai:opus-qzz")
-    key = profile.get("key") if isinstance(profile, dict) else None
-    if isinstance(key, str) and key.strip():
-        return key.strip()
-
-    cfg_path = Path.home() / ".openclaw/openclaw.json"
-    cfg = _load_json(cfg_path)
-    key = (((cfg or {}).get("models") or {}).get("providers") or {}).get("openai", {}).get("apiKey")
+    cfg = _load_json(CONFIG_PATH) or {}
+    key = cfg.get("apiKey")
     if isinstance(key, str) and key.strip():
         return key.strip()
     return None
+
+
+def resolve_base_url(explicit: str | None) -> str:
+    if explicit and explicit.strip():
+        return explicit.strip().rstrip("/")
+    cfg = _load_json(CONFIG_PATH) or {}
+    base_url = cfg.get("baseUrl")
+    if isinstance(base_url, str) and base_url.strip():
+        return base_url.strip().rstrip("/")
+    return DEFAULT_BASE_URL
 
 
 def post_json(url: str, api_key: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
@@ -67,23 +88,54 @@ def post_json(url: str, api_key: str, payload: dict[str, Any], timeout: int) -> 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate an image via opus.qzz.io gpt-image-2")
-    parser.add_argument("--prompt", required=True, help="Image prompt")
-    parser.add_argument("--output", default=DEFAULT_OUTPUT, help="Output PNG path")
-    parser.add_argument("--size", default=DEFAULT_SIZE, help="Image size, e.g. 1024x1024")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model id")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="OpenAI-compatible base URL")
-    parser.add_argument("--api-key", default=None, help="API key; prefer env/auth profile instead")
-    parser.add_argument("--timeout", type=int, default=240, help="Request timeout seconds")
-    parser.add_argument("--background", default="opaque", choices=["opaque", "transparent", "auto"])
-    parser.add_argument("--moderation", default="low", choices=["low", "auto"])
-    parser.add_argument("--output-format", default="png", choices=["png", "webp", "jpeg"])
-    parser.add_argument("--count", type=int, default=1)
+    parser = argparse.ArgumentParser(description="Visual Studio direct Opus/gpt-image-2 helper")
+    sub = parser.add_subparsers(dest="command")
+
+    gen = sub.add_parser("generate", help="Generate an image")
+    gen.add_argument("--prompt", required=True, help="Image prompt")
+    gen.add_argument("--output", default=DEFAULT_OUTPUT, help="Output PNG path")
+    gen.add_argument("--size", default=DEFAULT_SIZE, help="Image size, e.g. 1024x1024")
+    gen.add_argument("--model", default=DEFAULT_MODEL, help="Model id")
+    gen.add_argument("--base-url", default=None, help="OpenAI-compatible base URL")
+    gen.add_argument("--api-key", default=None, help="One-shot API key; not saved")
+    gen.add_argument("--timeout", type=int, default=240, help="Request timeout seconds")
+    gen.add_argument("--background", default="opaque", choices=["opaque", "transparent", "auto"])
+    gen.add_argument("--moderation", default="low", choices=["low", "auto"])
+    gen.add_argument("--output-format", default="png", choices=["png", "webp", "jpeg"])
+    gen.add_argument("--count", type=int, default=1)
+
+    setkey = sub.add_parser("setkey", help="Save API key to Visual Studio private config")
+    setkey.add_argument("key", help="Opus API key")
+    setkey.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Base URL to save")
+
+    sub.add_parser("clearkey", help="Delete saved Visual Studio API key")
+    sub.add_parser("status", help="Show whether key is configured without revealing it")
+
+    # Backward compatibility: allow old --prompt ... invocation as generate.
+    if len(sys.argv) > 1 and sys.argv[1].startswith("--"):
+        sys.argv.insert(1, "generate")
+
     args = parser.parse_args()
+
+    if args.command == "setkey":
+        set_api_key(args.key, args.base_url)
+        print(json.dumps({"ok": True, "config": str(CONFIG_PATH), "baseUrl": args.base_url.rstrip("/")}, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "clearkey":
+        removed = clear_api_key()
+        print(json.dumps({"ok": True, "removed": removed, "config": str(CONFIG_PATH)}, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "status":
+        cfg = _load_json(CONFIG_PATH) or {}
+        print(json.dumps({"configured": bool(resolve_api_key(None)), "config": str(CONFIG_PATH), "baseUrl": cfg.get("baseUrl")}, ensure_ascii=False, indent=2))
+        return 0
+    if args.command != "generate":
+        parser.print_help()
+        return 1
 
     api_key = resolve_api_key(args.api_key)
     if not api_key:
-        print("ERROR: missing API key. Set OPUS_API_KEY, pass --api-key, or add auth profile openai:opus-qzz.", file=sys.stderr)
+        print(f"ERROR: missing API key. Run: {sys.argv[0]} setkey '<key>'", file=sys.stderr)
         return 2
 
     payload: dict[str, Any] = {
@@ -95,7 +147,7 @@ def main() -> int:
         "moderation": args.moderation,
         "background": args.background,
     }
-    url = args.base_url.rstrip("/") + "/images/generations"
+    url = resolve_base_url(args.base_url) + "/images/generations"
     obj = post_json(url, api_key, payload, args.timeout)
 
     data = obj.get("data") or []
