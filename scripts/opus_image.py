@@ -52,7 +52,8 @@ def _provider_config(provider: str) -> dict[str, Any]:
         if isinstance(item, dict):
             return item
     # Backward compatibility for the original single Opus key format.
-    if provider == "openai-image":
+    # vivgrid-image currently uses the same Opus base URL/key family.
+    if provider in ("openai-image", "vivgrid-image"):
         return cfg
     return {}
 
