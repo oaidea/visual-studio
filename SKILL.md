@@ -12,7 +12,7 @@ Use this skill when the user explicitly asks to use **视觉工作室**, **VS**,
 - Do **not** use OpenClaw's built-in `image_generate` for this workflow.
 - Pass the user's image prompt to the script **verbatim**. Do not rewrite, polish, translate, summarize, or expand it before calling the script.
 - Default can be configured. If no default is configured, VS uses `openai-image` (`gpt-image-2`).
-- Temporary per-run overrides use `--provider` / `--model` and do **not** change the saved default.
+- Temporary per-run overrides use `--provider` / `--model` and do **not** change the saved default. User-facing short commands: `vs:gpt` means `openai-image / gpt-image-2`; `vs:gemini` means `gemini-native / gemini-2.5-flash-image`.
 
 ## API key
 
@@ -56,11 +56,18 @@ Temporary override without changing the saved default:
 
 ```bash
 python3 scripts/opus_image.py generate \
-  --provider gemini-native \
+  --provider vs:gemini \
   --model gemini-2.5-flash-image \
   --prompt '<verbatim user prompt>' \
   --output /tmp/visual-studio-gemini-$(date +%Y%m%d-%H%M%S).png \
   --size ''
+```
+
+Alias mapping:
+
+```text
+vs:gpt    -> --provider openai-image --model gpt-image-2
+vs:gemini -> --provider gemini-native --model gemini-2.5-flash-image
 ```
 
 ## Opus / gpt-image-2

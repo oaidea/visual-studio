@@ -20,6 +20,8 @@ DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
 DEFAULT_MODEL = "gpt-image-2"
 DEFAULT_GEMINI_NATIVE_MODEL = "gemini-2.5-flash-image"
 PROVIDERS = ("openai-image", "gemini-native")
+PROVIDER_ALIASES = {"vs:gpt": "openai-image", "vs:gemini": "gemini-native"}
+PROVIDER_CHOICES = PROVIDERS + tuple(PROVIDER_ALIASES)
 DEFAULT_SIZE = "1024x1024"
 DEFAULT_OUTPUT = "/tmp/opus-image.png"
 CONFIG_PATH = Path.home() / ".openclaw/visual-studio/config.json"
@@ -44,9 +46,15 @@ def _config() -> dict[str, Any]:
     return _load_json(CONFIG_PATH) or {}
 
 
+def normalize_provider(provider: str | None) -> str | None:
+    if provider is None:
+        return None
+    return PROVIDER_ALIASES.get(provider, provider)
+
+
 def configured_default_provider() -> str:
     cfg = _config()
-    provider = cfg.get("defaultProvider")
+    provider = normalize_provider(cfg.get("defaultProvider") if isinstance(cfg.get("defaultProvider"), str) else None)
     if isinstance(provider, str) and provider in PROVIDERS:
         return provider
     return DEFAULT_PROVIDER
@@ -65,6 +73,7 @@ def configured_default_model(provider: str) -> str:
 
 
 def set_default(provider: str, model: str | None = None) -> dict[str, Any]:
+    provider = normalize_provider(provider) or DEFAULT_PROVIDER
     cfg = _config()
     cfg["defaultProvider"] = provider
     if model and model.strip():
@@ -388,7 +397,7 @@ def main() -> int:
     gen.add_argument("--prompt", required=True, help="Image prompt")
     gen.add_argument("--output", default=DEFAULT_OUTPUT, help="Output image path or directory")
     gen.add_argument("--size", default=DEFAULT_SIZE, help="Image size for OpenAI image endpoint, e.g. 1024x1024")
-    gen.add_argument("--provider", default=None, choices=PROVIDERS, help="Provider override for this run; omit to use configured default")
+    gen.add_argument("--provider", default=None, choices=PROVIDER_CHOICES, help="Provider override for this run; omit to use configured default. Aliases: vs:gpt, vs:gemini")
     gen.add_argument("--model", default=None, help="Model override for this run; omit to use provider default/configured default")
     gen.add_argument("--base-url", default=None, help="Provider base URL")
     gen.add_argument("--api-key", default=None, help="One-shot API key; not saved")
@@ -400,14 +409,14 @@ def main() -> int:
 
     setkey = sub.add_parser("setkey", help="Save API key to Visual Studio private config")
     setkey.add_argument("key", help="Provider API key")
-    setkey.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDERS)
+    setkey.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDER_CHOICES)
     setkey.add_argument("--base-url", default=None, help="Base URL to save")
 
     clearkey = sub.add_parser("clearkey", help="Delete saved Visual Studio API key")
-    clearkey.add_argument("--provider", default=None, choices=PROVIDERS)
+    clearkey.add_argument("--provider", default=None, choices=PROVIDER_CHOICES)
 
     setdefault = sub.add_parser("set-default", help="Set default provider/model for future generate calls")
-    setdefault.add_argument("--provider", required=True, choices=PROVIDERS)
+    setdefault.add_argument("--provider", required=True, choices=PROVIDER_CHOICES)
     setdefault.add_argument("--model", default=None, help="Optional default model for the provider")
 
     sub.add_parser("status", help="Show whether provider keys/defaults are configured without revealing keys")
@@ -419,10 +428,12 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "setkey":
+        args.provider = normalize_provider(args.provider) or DEFAULT_PROVIDER
         set_api_key(args.key, args.base_url, args.provider)
         print(json.dumps({"ok": True, "provider": args.provider, "config": str(CONFIG_PATH), "baseUrl": resolve_base_url(None, args.provider)}, ensure_ascii=False, indent=2))
         return 0
     if args.command == "clearkey":
+        args.provider = normalize_provider(args.provider)
         removed = clear_api_key(args.provider)
         print(json.dumps({"ok": True, "removed": removed, "provider": args.provider, "config": str(CONFIG_PATH)}, ensure_ascii=False, indent=2))
         return 0
@@ -439,7 +450,7 @@ def main() -> int:
         parser.print_help()
         return 1
 
-    args.provider = args.provider or configured_default_provider()
+    args.provider = normalize_provider(args.provider) or configured_default_provider()
     args.model = args.model or configured_default_model(args.provider)
     api_key = resolve_api_key(args.api_key, args.provider)
     if not api_key:
