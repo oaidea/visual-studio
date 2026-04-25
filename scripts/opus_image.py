@@ -10,7 +10,6 @@ import re
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -18,12 +17,9 @@ from typing import Any
 DEFAULT_PROVIDER = "openai-image"
 DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
 DEFAULT_MODEL = "gpt-image-2"
-DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-image"
-DEFAULT_OPENAI_CHAT_MODEL = "gemini-2.5-flash-image"
 DEFAULT_VIVGRID_MODEL = "gemini-3-flash-preview"
 DEFAULT_VIVGRID_BASE_URL = ""
-PROVIDERS = ("openai-image", "gemini", "openai-chat", "vivgrid-image")
+PROVIDERS = ("openai-image", "vivgrid-image")
 DEFAULT_SIZE = "1024x1024"
 DEFAULT_OUTPUT = "/tmp/opus-image.png"
 CONFIG_PATH = Path.home() / ".openclaw/visual-studio/config.json"
@@ -62,18 +58,12 @@ def _provider_config(provider: str) -> dict[str, Any]:
 
 
 def default_base_url(provider: str) -> str:
-    if provider == "gemini":
-        return DEFAULT_GEMINI_BASE_URL
     if provider == "vivgrid-image":
         return DEFAULT_VIVGRID_BASE_URL
     return DEFAULT_BASE_URL
 
 
 def default_model(provider: str) -> str:
-    if provider == "gemini":
-        return DEFAULT_GEMINI_MODEL
-    if provider == "openai-chat":
-        return DEFAULT_OPENAI_CHAT_MODEL
     if provider == "vivgrid-image":
         return DEFAULT_VIVGRID_MODEL
     return DEFAULT_MODEL
@@ -133,8 +123,6 @@ def resolve_api_key(explicit: str | None, provider: str) -> str | None:
     if isinstance(key, str) and key.strip():
         return key.strip()
     env_names = {
-        "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
-        "openai-chat": ("OPENAI_API_KEY", "OPUS_API_KEY"),
         "openai-image": ("OPUS_API_KEY", "OPENAI_API_KEY"),
         "vivgrid-image": ("VIVGRID_API_KEY", "OPENAI_API_KEY"),
     }.get(provider, ())
@@ -157,13 +145,7 @@ def resolve_base_url(explicit: str | None, provider: str) -> str:
 
 def post_json(url: str, api_key: str, payload: dict[str, Any], timeout: int, provider: str) -> dict[str, Any]:
     headers = {"Content-Type": "application/json"}
-    if provider == "gemini":
-        parsed = urllib.parse.urlsplit(url)
-        qs = urllib.parse.parse_qs(parsed.query)
-        qs["key"] = [api_key]
-        url = urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(qs, doseq=True)))
-    else:
-        headers["Authorization"] = "Bearer " + api_key
+    headers["Authorization"] = "Bearer " + api_key
 
     req = urllib.request.Request(
         url,
@@ -263,44 +245,6 @@ def generate_openai_image(args: argparse.Namespace, api_key: str) -> tuple[dict[
     return obj, b64, mime
 
 
-def generate_gemini(args: argparse.Namespace, api_key: str) -> tuple[dict[str, Any], str, str | None]:
-    payload: dict[str, Any] = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": args.prompt}],
-            }
-        ],
-        "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
-    }
-    base_url = resolve_base_url(args.base_url, args.provider)
-    if not base_url:
-        raise RuntimeError(f"missing base URL for provider {args.provider}; pass --base-url or save one with setkey")
-    url = base_url + f"/models/{args.model}:generateContent"
-    obj = post_json(url, api_key, payload, args.timeout, args.provider)
-    b64, mime = _find_b64_image(obj)
-    if not b64:
-        raise RuntimeError("Gemini response has no inline image data")
-    return obj, b64, mime
-
-
-def generate_openai_chat(args: argparse.Namespace, api_key: str) -> tuple[dict[str, Any], str, str | None]:
-    payload: dict[str, Any] = {
-        "model": args.model,
-        "messages": [{"role": "user", "content": args.prompt}],
-        "modalities": ["text", "image"],
-    }
-    base_url = resolve_base_url(args.base_url, args.provider)
-    if not base_url:
-        raise RuntimeError(f"missing base URL for provider {args.provider}; pass --base-url or save one with setkey")
-    url = base_url + "/chat/completions"
-    obj = post_json(url, api_key, payload, args.timeout, args.provider)
-    b64, mime = _find_b64_image(obj)
-    if not b64:
-        raise RuntimeError("chat completions response has no image base64 data")
-    return obj, b64, mime
-
-
 def configured_providers() -> dict[str, bool]:
     return {provider: bool(resolve_api_key(None, provider)) for provider in PROVIDERS}
 
@@ -361,12 +305,7 @@ def main() -> int:
         return 2
 
     try:
-        if args.provider == "gemini":
-            obj, b64, mime = generate_gemini(args, api_key)
-        elif args.provider == "openai-chat":
-            obj, b64, mime = generate_openai_chat(args, api_key)
-        else:
-            obj, b64, mime = generate_openai_image(args, api_key)
+        obj, b64, mime = generate_openai_image(args, api_key)
         output = write_image(args.output, b64, mime, args.output_format)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
