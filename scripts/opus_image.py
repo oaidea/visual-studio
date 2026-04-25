@@ -18,10 +18,8 @@ from typing import Any
 DEFAULT_PROVIDER = "openai-image"
 DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
 DEFAULT_MODEL = "gpt-image-2"
-DEFAULT_VIVGRID_MODEL = "gemini-3.1-pro-preview"
 DEFAULT_GEMINI_NATIVE_MODEL = "gemini-2.5-flash-image"
-DEFAULT_VIVGRID_BASE_URL = DEFAULT_BASE_URL
-PROVIDERS = ("openai-image", "vivgrid-image", "gemini-chat", "gemini-native")
+PROVIDERS = ("openai-image", "gemini-native")
 DEFAULT_SIZE = "1024x1024"
 DEFAULT_OUTPUT = "/tmp/opus-image.png"
 CONFIG_PATH = Path.home() / ".openclaw/visual-studio/config.json"
@@ -54,8 +52,7 @@ def _provider_config(provider: str) -> dict[str, Any]:
         if isinstance(item, dict):
             return item
     # Backward compatibility for the original single Opus key format.
-    # vivgrid-image currently uses the same Opus base URL/key family.
-    if provider in ("openai-image", "vivgrid-image", "gemini-chat"):
+    if provider == "openai-image":
         return cfg
     if provider == "gemini-native":
         native_cfg = dict(cfg)
@@ -67,8 +64,6 @@ def _provider_config(provider: str) -> dict[str, Any]:
 
 
 def default_base_url(provider: str) -> str:
-    if provider in ("vivgrid-image", "gemini-chat"):
-        return DEFAULT_VIVGRID_BASE_URL
     if provider == "gemini-native":
         return DEFAULT_BASE_URL.removesuffix("/v1")
     return DEFAULT_BASE_URL
@@ -77,8 +72,6 @@ def default_base_url(provider: str) -> str:
 def default_model(provider: str) -> str:
     if provider == "gemini-native":
         return DEFAULT_GEMINI_NATIVE_MODEL
-    if provider in ("vivgrid-image", "gemini-chat"):
-        return DEFAULT_VIVGRID_MODEL
     return DEFAULT_MODEL
 
 
@@ -137,8 +130,6 @@ def resolve_api_key(explicit: str | None, provider: str) -> str | None:
         return key.strip()
     env_names = {
         "openai-image": ("OPUS_API_KEY", "OPENAI_API_KEY"),
-        "vivgrid-image": ("VIVGRID_API_KEY", "OPENAI_API_KEY"),
-        "gemini-chat": ("VIVGRID_API_KEY", "OPUS_API_KEY", "OPENAI_API_KEY"),
         "gemini-native": ("VIVGRID_API_KEY", "OPUS_API_KEY", "OPENAI_API_KEY"),
     }.get(provider, ())
     for name in env_names:
@@ -309,43 +300,6 @@ def generate_openai_image(args: argparse.Namespace, api_key: str) -> tuple[dict[
     return obj, b64, mime
 
 
-def generate_gemini_chat(args: argparse.Namespace, api_key: str) -> tuple[dict[str, Any], str, str | None]:
-    # NewAPI Gemini image generation relay uses /v1/chat/completions,
-    # but expects Gemini-native `contents` alongside OpenAI `messages`.
-    # Keep the payload doc-faithful and avoid extra steering that can make
-    # the relay treat the request as prompt-rewriting instead of generation.
-    content = [{"type": "text", "text": args.prompt}]
-    payload: dict[str, Any] = {
-        "model": args.model,
-        "stream": False,
-        "messages": [{"role": "user", "content": content}],
-        "contents": [{"role": "user", "parts": [{"text": args.prompt}]}],
-        # NewAPI documents extra_body as optional. The current Opus/NewAPI
-        # relay needs these compatibility hints to return image URLs instead
-        # of plain prompt text for simple image requests.
-        "extra_body": {
-            "responseModalities": ["TEXT", "IMAGE"],
-            "response_modalities": ["TEXT", "IMAGE"],
-            "modalities": ["text", "image"],
-        },
-    }
-    if args.size:
-        payload["extra_body"]["size"] = args.size
-    base_url = resolve_base_url(args.base_url, args.provider)
-    if not base_url:
-        raise RuntimeError(f"missing base URL for provider {args.provider}; pass --base-url or save one with setkey")
-    url = base_url + "/chat/completions"
-    obj = post_json(url, api_key, payload, args.timeout, args.provider)
-    b64, mime = _find_b64_image(obj)
-    if b64:
-        return obj, b64, mime
-    image_url = _find_image_url(obj)
-    if image_url:
-        output = download_image(image_url, args.output, args.timeout, args.output_format)
-        return {**obj, "_downloaded_image_url": image_url, "_downloaded_path": str(output)}, "", "url"
-    raise RuntimeError("chat completions response has no image base64 data or image URL")
-
-
 
 def _aspect_ratio_from_size(size: str | None) -> str | None:
     if not size or "x" not in size:
@@ -445,9 +399,7 @@ def main() -> int:
         return 2
 
     try:
-        if args.provider == "gemini-chat":
-            obj, b64, mime = generate_gemini_chat(args, api_key)
-        elif args.provider == "gemini-native":
+        if args.provider == "gemini-native":
             obj, b64, mime = generate_gemini_native(args, api_key)
         else:
             obj, b64, mime = generate_openai_image(args, api_key)
@@ -464,7 +416,7 @@ def main() -> int:
         "path": str(output),
         "provider": args.provider,
         "model": args.model,
-        "size": args.size if args.provider in ("openai-image", "vivgrid-image", "gemini-chat", "gemini-native") else None,
+        "size": args.size if args.provider in ("openai-image", "gemini-native") else None,
         "mime": mime,
         "revised_prompt": _extract_revised_prompt(obj),
         "usage": obj.get("usage") or obj.get("usageMetadata"),
