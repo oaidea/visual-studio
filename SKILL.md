@@ -101,7 +101,7 @@ python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py gene
 
 Delivery is channel-aware:
 
-- **Kimi / `kimi-claw`**: do **not** reply with a `MEDIA:` line for Visual Studio output. Kimi may double-render VS image files when delivered by `MEDIA:`. Instead send exactly one image attachment with the `message` tool (`action=send`, `channel=kimi-claw`, `target=main`, `media=<absolute image path>`, `mimeType=image/png`) and then finish the assistant turn with only `NO_REPLY`.
+- **Kimi / `kimi-claw`**: do **not** reply with a `MEDIA:` line for Visual Studio output. Kimi may double-render VS image files when delivered by `MEDIA:`. Send exactly one local image attachment with the `message` tool (`action=send`, `channel=kimi-claw`, `target=main`, `media=<absolute image path>`, `mimeType=image/png` or the real MIME type) and then finish the assistant turn with only `NO_REPLY`. For `gemini-chat`, the API may return an image URL; the script downloads it first, and Kimi delivery must still use the downloaded local file as the image attachment, never the remote URL.
 - **Other channels / web UI**: reply with one `MEDIA:/absolute/path.png` line.
 
 Never use both `MEDIA:` and a `message` attachment for the same generated image.
