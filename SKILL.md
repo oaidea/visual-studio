@@ -81,7 +81,7 @@ Gemini native relay endpoint from NewAPI docs (`/v1beta/models/{model}:generateC
 ```bash
 python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
   --provider gemini-native \
-  --model gemini-3.1-pro-preview \
+  --model gemini-2.5-flash-image \
   --prompt '<verbatim user prompt>' \
   --output /tmp/visual-studio-gemini-native-$(date +%Y%m%d-%H%M%S).png
 ```
@@ -106,7 +106,7 @@ python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py gene
   --output /tmp/visual-studio-vivgrid-$(date +%Y%m%d-%H%M%S).png
 ```
 
-`gemini-native` follows the NewAPI Gemini native docs: `contents` plus `generationConfig.responseModalities`. The docs also show optional `generationConfig.imageConfig.aspectRatio/imageSize`, but the current relayed `gemini-3.1-pro-preview` rejects inferred aspect ratios, so this script does not send imageConfig by default. `gemini-chat` follows the OpenAI chat-format relay docs: `model`, `stream`, `messages`, Gemini-native `contents`, and optional `extra_body`. `gemini-native` uses base URL `https://opus.qzz.io` by default; `gemini-chat` / `vivgrid-image` use `https://opus.qzz.io/v1`. If the key is saved with `setkey`, omit `--api-key`.
+`gemini-native` defaults to the verified image model `gemini-2.5-flash-image` and follows the NewAPI Gemini native docs: `contents` plus `generationConfig.responseModalities`. The docs also show optional `generationConfig.imageConfig.aspectRatio/imageSize`, but the current relayed `gemini-3.1-pro-preview` rejects inferred aspect ratios, so this script does not send imageConfig by default. `gemini-chat` follows the OpenAI chat-format relay docs: `model`, `stream`, `messages`, Gemini-native `contents`, and optional `extra_body`. `gemini-native` uses base URL `https://opus.qzz.io` by default; smoke tests showed `gemini-2.5-flash-image` returns native image data, while `gemini-3-pro-preview` / `gemini-3.1-pro-preview` may return external image URLs for simple prompts and text-only responses for complex prompts; `gemini-chat` / `vivgrid-image` use `https://opus.qzz.io/v1`. If the key is saved with `setkey`, omit `--api-key`.
 
 ## Delivery
 

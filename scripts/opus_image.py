@@ -19,6 +19,7 @@ DEFAULT_PROVIDER = "openai-image"
 DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
 DEFAULT_MODEL = "gpt-image-2"
 DEFAULT_VIVGRID_MODEL = "gemini-3.1-pro-preview"
+DEFAULT_GEMINI_NATIVE_MODEL = "gemini-2.5-flash-image"
 DEFAULT_VIVGRID_BASE_URL = DEFAULT_BASE_URL
 PROVIDERS = ("openai-image", "vivgrid-image", "gemini-chat", "gemini-native")
 DEFAULT_SIZE = "1024x1024"
@@ -74,7 +75,9 @@ def default_base_url(provider: str) -> str:
 
 
 def default_model(provider: str) -> str:
-    if provider in ("vivgrid-image", "gemini-chat", "gemini-native"):
+    if provider == "gemini-native":
+        return DEFAULT_GEMINI_NATIVE_MODEL
+    if provider in ("vivgrid-image", "gemini-chat"):
         return DEFAULT_VIVGRID_MODEL
     return DEFAULT_MODEL
 
