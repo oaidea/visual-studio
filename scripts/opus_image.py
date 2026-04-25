@@ -304,7 +304,13 @@ def generate_gemini_chat(args: argparse.Namespace, api_key: str) -> tuple[dict[s
     payload: dict[str, Any] = {
         "model": args.model,
         "stream": False,
-        "messages": [{"role": "user", "content": content}],
+        "messages": [
+            {
+                "role": "system",
+                "content": "Generate the requested image directly. Do not rewrite, translate, optimize, explain, or return prompts. Return an image result.",
+            },
+            {"role": "user", "content": content},
+        ],
         "contents": [{"role": "user", "parts": [{"text": args.prompt}]}],
         "extra_body": {
             "responseModalities": ["TEXT", "IMAGE"],
