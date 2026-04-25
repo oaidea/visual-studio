@@ -1,11 +1,11 @@
 ---
 name: visual-studio
-description: 视觉工作室。Use when the user asks to generate images via Opus / gpt-image-2 direct API, Gemini 2.5 Flash Image, says “用 opus 画图”, “用 gpt-image-2 直连画图”, “用 Gemini 画图”, “视觉工作室”, or wants image generation without OpenClaw's built-in image_generate fallback behavior. Generates images by calling a configured image provider and returns a local image path for channel-aware delivery.
+description: 视觉工作室。Use when the user asks to generate images via Opus / gpt-image-2 direct API, Gemini 2.5 Flash Image, Gemini 3 Flash Preview / vivgrid, says “用 opus 画图”, “用 gpt-image-2 直连画图”, “用 Gemini 画图”, “视觉工作室”, or wants image generation without OpenClaw's built-in image_generate fallback behavior. Generates images by calling a configured image provider and returns a local image path for channel-aware delivery.
 ---
 
 # 视觉工作室 / Visual Studio
 
-Use this skill when the user explicitly asks to use **视觉工作室**, **VS**, **visual-studio**, **opus**, **gpt-image-2 直连**, or **Gemini 2.5 Flash Image** for image generation.
+Use this skill when the user explicitly asks to use **视觉工作室**, **VS**, **visual-studio**, **opus**, **gpt-image-2 直连**, **Gemini 2.5 Flash Image**, or **Gemini 3 Flash Preview / vivgrid** for image generation.
 
 ## Core rules
 
@@ -39,6 +39,7 @@ Set keys per provider:
 python3 scripts/opus_image.py setkey --provider openai-image '<opus-api-key>'
 python3 scripts/opus_image.py setkey --provider gemini '<google-or-gemini-api-key>'
 python3 scripts/opus_image.py setkey --provider openai-chat '<openai-compatible-api-key>' --base-url '<base-url>'
+python3 scripts/opus_image.py setkey --provider vivgrid-image '<vivgrid-api-key>' --base-url '<vivgrid-base-url-with-/v1>'
 ```
 
 Clear the key:
@@ -94,6 +95,21 @@ python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py gene
   --prompt '<verbatim user prompt>' \
   --output /tmp/visual-studio-gemini-chat-$(date +%Y%m%d-%H%M%S).png
 ```
+
+## Gemini 3 Flash Preview / vivgrid
+
+Vivgrid image-generation endpoint (`/v1/images/generations`):
+
+```bash
+python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
+  --provider vivgrid-image \
+  --model gemini-3-flash-preview \
+  --base-url '<vivgrid-base-url-with-/v1>' \
+  --prompt '<verbatim user prompt>' \
+  --output /tmp/visual-studio-vivgrid-$(date +%Y%m%d-%H%M%S).png
+```
+
+If the vivgrid key/base URL is saved with `setkey`, omit `--base-url` and `--api-key`.
 
 ## Delivery
 

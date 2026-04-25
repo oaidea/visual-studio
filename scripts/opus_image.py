@@ -21,6 +21,9 @@ DEFAULT_MODEL = "gpt-image-2"
 DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-image"
 DEFAULT_OPENAI_CHAT_MODEL = "gemini-2.5-flash-image"
+DEFAULT_VIVGRID_MODEL = "gemini-3-flash-preview"
+DEFAULT_VIVGRID_BASE_URL = ""
+PROVIDERS = ("openai-image", "gemini", "openai-chat", "vivgrid-image")
 DEFAULT_SIZE = "1024x1024"
 DEFAULT_OUTPUT = "/tmp/opus-image.png"
 CONFIG_PATH = Path.home() / ".openclaw/visual-studio/config.json"
@@ -61,6 +64,8 @@ def _provider_config(provider: str) -> dict[str, Any]:
 def default_base_url(provider: str) -> str:
     if provider == "gemini":
         return DEFAULT_GEMINI_BASE_URL
+    if provider == "vivgrid-image":
+        return DEFAULT_VIVGRID_BASE_URL
     return DEFAULT_BASE_URL
 
 
@@ -69,6 +74,8 @@ def default_model(provider: str) -> str:
         return DEFAULT_GEMINI_MODEL
     if provider == "openai-chat":
         return DEFAULT_OPENAI_CHAT_MODEL
+    if provider == "vivgrid-image":
+        return DEFAULT_VIVGRID_MODEL
     return DEFAULT_MODEL
 
 
@@ -129,6 +136,7 @@ def resolve_api_key(explicit: str | None, provider: str) -> str | None:
         "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
         "openai-chat": ("OPENAI_API_KEY", "OPUS_API_KEY"),
         "openai-image": ("OPUS_API_KEY", "OPENAI_API_KEY"),
+        "vivgrid-image": ("VIVGRID_API_KEY", "OPENAI_API_KEY"),
     }.get(provider, ())
     for name in env_names:
         value = os.environ.get(name)
@@ -244,7 +252,10 @@ def generate_openai_image(args: argparse.Namespace, api_key: str) -> tuple[dict[
         "moderation": args.moderation,
         "background": args.background,
     }
-    url = resolve_base_url(args.base_url, args.provider) + "/images/generations"
+    base_url = resolve_base_url(args.base_url, args.provider)
+    if not base_url:
+        raise RuntimeError(f"missing base URL for provider {args.provider}; pass --base-url or save one with setkey")
+    url = base_url + "/images/generations"
     obj = post_json(url, api_key, payload, args.timeout, args.provider)
     b64, mime = _find_b64_image(obj.get("data") or obj)
     if not b64:
@@ -262,7 +273,10 @@ def generate_gemini(args: argparse.Namespace, api_key: str) -> tuple[dict[str, A
         ],
         "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
     }
-    url = resolve_base_url(args.base_url, args.provider) + f"/models/{args.model}:generateContent"
+    base_url = resolve_base_url(args.base_url, args.provider)
+    if not base_url:
+        raise RuntimeError(f"missing base URL for provider {args.provider}; pass --base-url or save one with setkey")
+    url = base_url + f"/models/{args.model}:generateContent"
     obj = post_json(url, api_key, payload, args.timeout, args.provider)
     b64, mime = _find_b64_image(obj)
     if not b64:
@@ -276,7 +290,10 @@ def generate_openai_chat(args: argparse.Namespace, api_key: str) -> tuple[dict[s
         "messages": [{"role": "user", "content": args.prompt}],
         "modalities": ["text", "image"],
     }
-    url = resolve_base_url(args.base_url, args.provider) + "/chat/completions"
+    base_url = resolve_base_url(args.base_url, args.provider)
+    if not base_url:
+        raise RuntimeError(f"missing base URL for provider {args.provider}; pass --base-url or save one with setkey")
+    url = base_url + "/chat/completions"
     obj = post_json(url, api_key, payload, args.timeout, args.provider)
     b64, mime = _find_b64_image(obj)
     if not b64:
@@ -285,7 +302,7 @@ def generate_openai_chat(args: argparse.Namespace, api_key: str) -> tuple[dict[s
 
 
 def configured_providers() -> dict[str, bool]:
-    return {provider: bool(resolve_api_key(None, provider)) for provider in ("openai-image", "gemini", "openai-chat")}
+    return {provider: bool(resolve_api_key(None, provider)) for provider in PROVIDERS}
 
 
 def main() -> int:
@@ -296,7 +313,7 @@ def main() -> int:
     gen.add_argument("--prompt", required=True, help="Image prompt")
     gen.add_argument("--output", default=DEFAULT_OUTPUT, help="Output image path or directory")
     gen.add_argument("--size", default=DEFAULT_SIZE, help="Image size for OpenAI image endpoint, e.g. 1024x1024")
-    gen.add_argument("--provider", default=DEFAULT_PROVIDER, choices=["openai-image", "gemini", "openai-chat"])
+    gen.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDERS)
     gen.add_argument("--model", default=None, help="Model id")
     gen.add_argument("--base-url", default=None, help="Provider base URL")
     gen.add_argument("--api-key", default=None, help="One-shot API key; not saved")
@@ -308,11 +325,11 @@ def main() -> int:
 
     setkey = sub.add_parser("setkey", help="Save API key to Visual Studio private config")
     setkey.add_argument("key", help="Provider API key")
-    setkey.add_argument("--provider", default=DEFAULT_PROVIDER, choices=["openai-image", "gemini", "openai-chat"])
+    setkey.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDERS)
     setkey.add_argument("--base-url", default=None, help="Base URL to save")
 
     clearkey = sub.add_parser("clearkey", help="Delete saved Visual Studio API key")
-    clearkey.add_argument("--provider", default=None, choices=["openai-image", "gemini", "openai-chat"])
+    clearkey.add_argument("--provider", default=None, choices=PROVIDERS)
     sub.add_parser("status", help="Show whether provider keys are configured without revealing them")
 
     # Backward compatibility: allow old --prompt ... invocation as generate.
@@ -331,7 +348,7 @@ def main() -> int:
         return 0
     if args.command == "status":
         cfg = _config()
-        print(json.dumps({"config": str(CONFIG_PATH), "providers": configured_providers(), "baseUrls": {p: resolve_base_url(None, p) for p in ("openai-image", "gemini", "openai-chat")}, "legacyConfig": "apiKey" in cfg}, ensure_ascii=False, indent=2))
+        print(json.dumps({"config": str(CONFIG_PATH), "providers": configured_providers(), "baseUrls": {p: resolve_base_url(None, p) for p in PROVIDERS}, "legacyConfig": "apiKey" in cfg}, ensure_ascii=False, indent=2))
         return 0
     if args.command != "generate":
         parser.print_help()
@@ -360,7 +377,7 @@ def main() -> int:
         "path": str(output),
         "provider": args.provider,
         "model": args.model,
-        "size": args.size if args.provider == "openai-image" else None,
+        "size": args.size if args.provider in ("openai-image", "vivgrid-image") else None,
         "mime": mime,
         "revised_prompt": _extract_revised_prompt(obj),
         "usage": obj.get("usage") or obj.get("usageMetadata"),
