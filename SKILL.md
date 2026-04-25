@@ -35,6 +35,22 @@ Check status without revealing keys:
 python3 scripts/opus_image.py status
 ```
 
+Initialize or validate setup after first install/reset:
+
+```bash
+python3 scripts/opus_image.py init
+```
+
+If `init` reports `ready: false`, configure at least the current default provider key, then run `init` again.
+
+Reset Visual Studio private config (destructive, requires confirmation):
+
+```bash
+python3 scripts/opus_image.py reset --yes
+python3 scripts/opus_image.py setkey --provider openai-image '<api-key>'
+python3 scripts/opus_image.py init
+```
+
 ## Defaults and model selection
 
 Set persistent default provider/model:

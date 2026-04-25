@@ -167,6 +167,41 @@ def clear_api_key(provider: str | None) -> bool:
     return removed
 
 
+def reset_config() -> bool:
+    if CONFIG_PATH.exists():
+        CONFIG_PATH.unlink()
+        return True
+    return False
+
+
+def init_config(openai_key: str | None = None, gemini_key: str | None = None, default_provider: str | None = None, default_model_value: str | None = None) -> dict[str, Any]:
+    if openai_key and openai_key.strip():
+        set_api_key(openai_key, None, "openai-image")
+    if gemini_key and gemini_key.strip():
+        set_api_key(gemini_key, None, "gemini-native")
+    if default_provider:
+        set_default(default_provider, default_model_value)
+
+    provider = configured_default_provider()
+    model = configured_default_model(provider)
+    configured = configured_providers()
+    missing = [name for name, ok in configured.items() if not ok]
+    ready = bool(configured.get(provider))
+    return {
+        "ok": ready,
+        "ready": ready,
+        "config": str(CONFIG_PATH),
+        "defaultProvider": provider,
+        "defaultModel": model,
+        "providers": configured,
+        "missingProviders": missing,
+        "nextSteps": [] if ready else [
+            f"python3 scripts/opus_image.py setkey --provider {provider} '<api-key>'",
+            "python3 scripts/opus_image.py init",
+        ],
+    }
+
+
 def resolve_api_key(explicit: str | None, provider: str) -> str | None:
     if explicit and explicit.strip():
         return explicit.strip()
@@ -407,6 +442,15 @@ def main() -> int:
     gen.add_argument("--output-format", default="png", choices=["png", "webp", "jpeg"])
     gen.add_argument("--count", type=int, default=1)
 
+    init = sub.add_parser("init", help="Initialize/check Visual Studio API key configuration")
+    init.add_argument("--openai-key", default=None, help="Optional key for openai-image; prefer setkey to avoid shell history")
+    init.add_argument("--gemini-key", default=None, help="Optional key for gemini-native; prefer setkey to avoid shell history")
+    init.add_argument("--default-provider", default=None, choices=PROVIDERS)
+    init.add_argument("--default-model", default=None)
+
+    reset = sub.add_parser("reset", help="Reset Visual Studio private config; requires --yes")
+    reset.add_argument("--yes", action="store_true", help="Confirm deletion of ~/.openclaw/visual-studio/config.json")
+
     setkey = sub.add_parser("setkey", help="Save API key to Visual Studio private config")
     setkey.add_argument("key", help="Provider API key")
     setkey.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDER_CHOICES)
@@ -427,6 +471,17 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    if args.command == "init":
+        result = init_config(args.openai_key, args.gemini_key, args.default_provider, args.default_model)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ready"] else 2
+    if args.command == "reset":
+        if not args.yes:
+            print("ERROR: reset deletes Visual Studio private config; rerun with --yes to confirm", file=sys.stderr)
+            return 2
+        removed = reset_config()
+        print(json.dumps({"ok": True, "removed": removed, "config": str(CONFIG_PATH), "requiresInit": True, "nextSteps": ["python3 scripts/opus_image.py setkey --provider openai-image '<api-key>'", "python3 scripts/opus_image.py init"]}, ensure_ascii=False, indent=2))
+        return 0
     if args.command == "setkey":
         args.provider = normalize_provider(args.provider) or DEFAULT_PROVIDER
         set_api_key(args.key, args.base_url, args.provider)
