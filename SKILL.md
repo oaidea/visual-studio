@@ -75,7 +75,7 @@ Supported defaults:
 
 ## Gemini 3 Pro Preview / vivgrid
 
-Recommended Gemini image endpoint (`/v1/chat/completions`):
+Gemini relay endpoint from NewAPI docs (`/v1/chat/completions`):
 
 ```bash
 python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
@@ -95,7 +95,7 @@ python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py gene
   --output /tmp/visual-studio-vivgrid-$(date +%Y%m%d-%H%M%S).png
 ```
 
-`gemini-chat` and `vivgrid-image` use the same default base URL as Opus: `https://opus.qzz.io/v1`. If the key is saved with `setkey`, omit `--api-key`.
+`gemini-chat` follows the NewAPI Gemini relay docs: request body includes `model`, `stream`, `messages`, Gemini-native `contents`, and optional `extra_body`. For the current Opus/NewAPI relay, `extra_body` includes image-mode compatibility hints (`responseModalities` / `response_modalities` / `modalities`) and `size` when provided. `gemini-chat` and `vivgrid-image` use the same default base URL as Opus: `https://opus.qzz.io/v1`. If the key is saved with `setkey`, omit `--api-key`.
 
 ## Delivery
 

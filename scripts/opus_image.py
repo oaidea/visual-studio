@@ -298,27 +298,27 @@ def generate_openai_image(args: argparse.Namespace, api_key: str) -> tuple[dict[
 
 
 def generate_gemini_chat(args: argparse.Namespace, api_key: str) -> tuple[dict[str, Any], str, str | None]:
-    # NewAPI/Vivgrid Gemini image generation uses /v1/chat/completions.
-    # Docs require messages, contents, stream, and optional extra_body.
+    # NewAPI Gemini image generation relay uses /v1/chat/completions,
+    # but expects Gemini-native `contents` alongside OpenAI `messages`.
+    # Keep the payload doc-faithful and avoid extra steering that can make
+    # the relay treat the request as prompt-rewriting instead of generation.
     content = [{"type": "text", "text": args.prompt}]
     payload: dict[str, Any] = {
         "model": args.model,
         "stream": False,
-        "messages": [
-            {
-                "role": "system",
-                "content": "Generate the requested image directly. Do not rewrite, translate, optimize, explain, or return prompts. Return an image result.",
-            },
-            {"role": "user", "content": content},
-        ],
+        "messages": [{"role": "user", "content": content}],
         "contents": [{"role": "user", "parts": [{"text": args.prompt}]}],
+        # NewAPI documents extra_body as optional. The current Opus/NewAPI
+        # relay needs these compatibility hints to return image URLs instead
+        # of plain prompt text for simple image requests.
         "extra_body": {
             "responseModalities": ["TEXT", "IMAGE"],
             "response_modalities": ["TEXT", "IMAGE"],
             "modalities": ["text", "image"],
-            "size": args.size,
         },
     }
+    if args.size:
+        payload["extra_body"]["size"] = args.size
     base_url = resolve_base_url(args.base_url, args.provider)
     if not base_url:
         raise RuntimeError(f"missing base URL for provider {args.provider}; pass --base-url or save one with setkey")
