@@ -10,6 +10,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,7 @@ DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
 DEFAULT_MODEL = "gpt-image-2"
 DEFAULT_VIVGRID_MODEL = "gemini-3.1-pro-preview"
 DEFAULT_VIVGRID_BASE_URL = DEFAULT_BASE_URL
-PROVIDERS = ("openai-image", "vivgrid-image")
+PROVIDERS = ("openai-image", "vivgrid-image", "gemini-chat")
 DEFAULT_SIZE = "1024x1024"
 DEFAULT_OUTPUT = "/tmp/opus-image.png"
 CONFIG_PATH = Path.home() / ".openclaw/visual-studio/config.json"
@@ -53,19 +54,19 @@ def _provider_config(provider: str) -> dict[str, Any]:
             return item
     # Backward compatibility for the original single Opus key format.
     # vivgrid-image currently uses the same Opus base URL/key family.
-    if provider in ("openai-image", "vivgrid-image"):
+    if provider in ("openai-image", "vivgrid-image", "gemini-chat"):
         return cfg
     return {}
 
 
 def default_base_url(provider: str) -> str:
-    if provider == "vivgrid-image":
+    if provider in ("vivgrid-image", "gemini-chat"):
         return DEFAULT_VIVGRID_BASE_URL
     return DEFAULT_BASE_URL
 
 
 def default_model(provider: str) -> str:
-    if provider == "vivgrid-image":
+    if provider in ("vivgrid-image", "gemini-chat"):
         return DEFAULT_VIVGRID_MODEL
     return DEFAULT_MODEL
 
@@ -126,6 +127,7 @@ def resolve_api_key(explicit: str | None, provider: str) -> str | None:
     env_names = {
         "openai-image": ("OPUS_API_KEY", "OPENAI_API_KEY"),
         "vivgrid-image": ("VIVGRID_API_KEY", "OPENAI_API_KEY"),
+        "gemini-chat": ("VIVGRID_API_KEY", "OPUS_API_KEY", "OPENAI_API_KEY"),
     }.get(provider, ())
     for name in env_names:
         value = os.environ.get(name)
@@ -206,6 +208,55 @@ def _find_b64_image(obj: Any) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _find_image_url(obj: Any) -> str | None:
+    if isinstance(obj, dict):
+        for key in ("url", "image_url"):
+            value = obj.get(key)
+            if isinstance(value, str) and value.startswith(("http://", "https://")):
+                return value
+            if isinstance(value, dict):
+                nested = value.get("url")
+                if isinstance(nested, str) and nested.startswith(("http://", "https://")):
+                    return nested
+        for value in obj.values():
+            found = _find_image_url(value)
+            if found:
+                return found
+    elif isinstance(obj, list):
+        for item in obj:
+            found = _find_image_url(item)
+            if found:
+                return found
+    elif isinstance(obj, str):
+        markdown = re.search(r"!\[[^\]]*\]\((https?://[^\s)]+)", obj)
+        if markdown:
+            return markdown.group(1)
+        plain = re.search(r"https?://[^\s)]+", obj)
+        if plain:
+            url = plain.group(0).rstrip(".,;。)，）]\"\'")
+            if re.search(r"\.(png|jpe?g|webp|gif)(\?|$)", urllib.parse.urlsplit(url).path, re.I) or "image" in url:
+                return url
+    return None
+
+
+def download_image(url: str, output_arg: str, timeout: int, output_format: str) -> Path:
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = resp.read()
+        content_type = resp.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+    if not data:
+        raise RuntimeError("image URL returned empty body")
+    output = Path(output_arg)
+    ext = _extension_for_mime(content_type or None, output_format)
+    if output.exists() and output.is_dir():
+        output = output / f"visual-studio-{int(time.time())}{ext}"
+    elif content_type and output.suffix.lower() != ext:
+        output = output.with_suffix(ext)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(data)
+    return output
+
+
 def _extension_for_mime(mime: str | None, output_format: str) -> str:
     if mime == "image/jpeg":
         return ".jpg"
@@ -244,6 +295,37 @@ def generate_openai_image(args: argparse.Namespace, api_key: str) -> tuple[dict[
     if not b64:
         raise RuntimeError("response has no image base64 data")
     return obj, b64, mime
+
+
+def generate_gemini_chat(args: argparse.Namespace, api_key: str) -> tuple[dict[str, Any], str, str | None]:
+    # NewAPI/Vivgrid Gemini image generation uses /v1/chat/completions.
+    # Docs require messages, contents, stream, and optional extra_body.
+    content = [{"type": "text", "text": args.prompt}]
+    payload: dict[str, Any] = {
+        "model": args.model,
+        "stream": False,
+        "messages": [{"role": "user", "content": content}],
+        "contents": [{"role": "user", "parts": [{"text": args.prompt}]}],
+        "extra_body": {
+            "responseModalities": ["TEXT", "IMAGE"],
+            "response_modalities": ["TEXT", "IMAGE"],
+            "modalities": ["text", "image"],
+            "size": args.size,
+        },
+    }
+    base_url = resolve_base_url(args.base_url, args.provider)
+    if not base_url:
+        raise RuntimeError(f"missing base URL for provider {args.provider}; pass --base-url or save one with setkey")
+    url = base_url + "/chat/completions"
+    obj = post_json(url, api_key, payload, args.timeout, args.provider)
+    b64, mime = _find_b64_image(obj)
+    if b64:
+        return obj, b64, mime
+    image_url = _find_image_url(obj)
+    if image_url:
+        output = download_image(image_url, args.output, args.timeout, args.output_format)
+        return {**obj, "_downloaded_image_url": image_url, "_downloaded_path": str(output)}, "", "url"
+    raise RuntimeError("chat completions response has no image base64 data or image URL")
 
 
 def configured_providers() -> dict[str, bool]:
@@ -306,8 +388,14 @@ def main() -> int:
         return 2
 
     try:
-        obj, b64, mime = generate_openai_image(args, api_key)
-        output = write_image(args.output, b64, mime, args.output_format)
+        if args.provider == "gemini-chat":
+            obj, b64, mime = generate_gemini_chat(args, api_key)
+        else:
+            obj, b64, mime = generate_openai_image(args, api_key)
+        if mime == "url":
+            output = Path(obj["_downloaded_path"])
+        else:
+            output = write_image(args.output, b64, mime, args.output_format)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 3
@@ -317,10 +405,11 @@ def main() -> int:
         "path": str(output),
         "provider": args.provider,
         "model": args.model,
-        "size": args.size if args.provider in ("openai-image", "vivgrid-image") else None,
+        "size": args.size if args.provider in ("openai-image", "vivgrid-image", "gemini-chat") else None,
         "mime": mime,
         "revised_prompt": _extract_revised_prompt(obj),
         "usage": obj.get("usage") or obj.get("usageMetadata"),
+        "image_url": obj.get("_downloaded_image_url"),
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

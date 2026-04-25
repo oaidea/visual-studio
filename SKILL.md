@@ -1,11 +1,11 @@
 ---
 name: visual-studio
-description: 视觉工作室。Use when the user asks to generate images via Opus / gpt-image-2 direct API, Gemini 3 Pro Preview / vivgrid, says “用 opus 画图”, “用 gpt-image-2 直连画图”, “用 Gemini 画图”, “视觉工作室”, or wants image generation without OpenClaw's built-in image_generate fallback behavior. Generates images by calling a configured image provider and returns a local image path for channel-aware delivery.
+description: 视觉工作室。Use when the user asks to generate images via Opus / gpt-image-2 direct API, Gemini 3 Pro Preview / vivgrid, Gemini chat-completions image generation, says “用 opus 画图”, “用 gpt-image-2 直连画图”, “用 Gemini 画图”, “视觉工作室”, or wants image generation without OpenClaw's built-in image_generate fallback behavior. Generates images by calling a configured image provider and returns a local image path for channel-aware delivery.
 ---
 
 # 视觉工作室 / Visual Studio
 
-Use this skill when the user explicitly asks to use **视觉工作室**, **VS**, **visual-studio**, **opus**, **gpt-image-2 直连**, or **Gemini 3 Pro Preview / vivgrid** for image generation.
+Use this skill when the user explicitly asks to use **视觉工作室**, **VS**, **visual-studio**, **opus**, **gpt-image-2 直连**, **Gemini 3 Pro Preview / vivgrid**, or **Gemini chat-completions image generation** for image generation.
 
 ## Core rules
 
@@ -21,7 +21,7 @@ python3 scripts/opus_image.py generate \
   --size 1024x1024
 ```
 
-Set `--size` only when the user requested a concrete supported size. Use `--provider vivgrid-image` for vivgrid Gemini 3 Pro Preview.
+Set `--size` only when the user requested a concrete supported size. Use `--provider gemini-chat` for Gemini image generation via `/v1/chat/completions`; keep `--provider vivgrid-image` only for `/v1/images/generations` tests.
 
 ## API key
 
@@ -38,6 +38,7 @@ Set keys per provider:
 ```bash
 python3 scripts/opus_image.py setkey --provider openai-image '<opus-api-key>'
 python3 scripts/opus_image.py setkey --provider vivgrid-image '<vivgrid-or-opus-api-key>'
+python3 scripts/opus_image.py setkey --provider gemini-chat '<vivgrid-or-opus-api-key>'
 ```
 
 Clear the key:
@@ -74,7 +75,17 @@ Supported defaults:
 
 ## Gemini 3 Pro Preview / vivgrid
 
-Vivgrid image-generation endpoint (`/v1/images/generations`):
+Recommended Gemini image endpoint (`/v1/chat/completions`):
+
+```bash
+python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
+  --provider gemini-chat \
+  --model gemini-3.1-pro-preview \
+  --prompt '<verbatim user prompt>' \
+  --output /tmp/visual-studio-gemini-chat-$(date +%Y%m%d-%H%M%S).png
+```
+
+Legacy image-generation endpoint (`/v1/images/generations`, currently may reject non-Imagen models):
 
 ```bash
 python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
@@ -84,7 +95,7 @@ python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py gene
   --output /tmp/visual-studio-vivgrid-$(date +%Y%m%d-%H%M%S).png
 ```
 
-`vivgrid-image` uses the same default base URL as Opus: `https://opus.qzz.io/v1`. If the key is saved with `setkey`, omit `--api-key`.
+`gemini-chat` and `vivgrid-image` use the same default base URL as Opus: `https://opus.qzz.io/v1`. If the key is saved with `setkey`, omit `--api-key`.
 
 ## Delivery
 
