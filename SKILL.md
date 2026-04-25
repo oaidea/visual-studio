@@ -12,7 +12,7 @@ Use this skill when the user explicitly asks to use **视觉工作室**, **VS**,
 - Do **not** use OpenClaw's built-in `image_generate` for this workflow.
 - Pass the user's image prompt to the script **verbatim**. Do not rewrite, polish, translate, summarize, or expand it before calling the script.
 - Default can be configured. If no default is configured, VS uses `openai-image` (`gpt-image-2`).
-- Temporary per-run overrides use `--provider` / `--model` and do **not** change the saved default. User-facing short commands: `vs:gpt` means `openai-image / gpt-image-2`; `vs:gemini` means `gemini-native / gemini-2.5-flash-image`.
+- Conversational shorthand: `vs` means use the saved default. `vs:gpt` and `vs:gemini` are single-run overrides only; they do **not** change the saved default.
 
 ## API key
 
@@ -42,6 +42,7 @@ Set persistent default provider/model:
 ```bash
 python3 scripts/opus_image.py set-default --provider openai-image --model gpt-image-2
 python3 scripts/opus_image.py set-default --provider gemini-native --model gemini-2.5-flash-image
+# Note: set-default uses canonical provider names, not vs:gpt / vs:gemini.
 ```
 
 Generate with the saved default:
@@ -63,11 +64,12 @@ python3 scripts/opus_image.py generate \
   --size ''
 ```
 
-Alias mapping:
+Single-run alias mapping:
 
 ```text
-vs:gpt    -> --provider openai-image --model gpt-image-2
-vs:gemini -> --provider gemini-native --model gemini-2.5-flash-image
+vs         -> use saved default
+vs:gpt     -> this run only: --provider openai-image --model gpt-image-2
+vs:gemini  -> this run only: --provider gemini-native --model gemini-2.5-flash-image
 ```
 
 ## Opus / gpt-image-2

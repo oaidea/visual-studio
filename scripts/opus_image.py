@@ -416,7 +416,7 @@ def main() -> int:
     clearkey.add_argument("--provider", default=None, choices=PROVIDER_CHOICES)
 
     setdefault = sub.add_parser("set-default", help="Set default provider/model for future generate calls")
-    setdefault.add_argument("--provider", required=True, choices=PROVIDER_CHOICES)
+    setdefault.add_argument("--provider", required=True, choices=PROVIDERS)
     setdefault.add_argument("--model", default=None, help="Optional default model for the provider")
 
     sub.add_parser("status", help="Show whether provider keys/defaults are configured without revealing keys")
