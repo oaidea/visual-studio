@@ -11,9 +11,8 @@ Use this skill when the user explicitly asks to use **视觉工作室**, **VS**,
 
 - Do **not** use OpenClaw's built-in `image_generate` for this workflow.
 - Pass the user's image prompt to the script **verbatim**. Do not rewrite, polish, translate, summarize, or expand it before calling the script.
-- Default choices:
-  - Opus / OpenAI image endpoint: `--provider openai-image` (`gpt-image-2`)
-  - Gemini native image endpoint: `--provider gemini-native` (`gemini-2.5-flash-image`)
+- Default can be configured. If no default is configured, VS uses `openai-image` (`gpt-image-2`).
+- Temporary per-run overrides use `--provider` / `--model` and do **not** change the saved default.
 
 ## API key
 
@@ -34,6 +33,34 @@ Check status without revealing keys:
 
 ```bash
 python3 scripts/opus_image.py status
+```
+
+## Defaults and model selection
+
+Set persistent default provider/model:
+
+```bash
+python3 scripts/opus_image.py set-default --provider openai-image --model gpt-image-2
+python3 scripts/opus_image.py set-default --provider gemini-native --model gemini-2.5-flash-image
+```
+
+Generate with the saved default:
+
+```bash
+python3 scripts/opus_image.py generate \
+  --prompt '<verbatim user prompt>' \
+  --output /tmp/visual-studio-$(date +%Y%m%d-%H%M%S).png
+```
+
+Temporary override without changing the saved default:
+
+```bash
+python3 scripts/opus_image.py generate \
+  --provider gemini-native \
+  --model gemini-2.5-flash-image \
+  --prompt '<verbatim user prompt>' \
+  --output /tmp/visual-studio-gemini-$(date +%Y%m%d-%H%M%S).png \
+  --size ''
 ```
 
 ## Opus / gpt-image-2

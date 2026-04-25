@@ -44,6 +44,43 @@ def _config() -> dict[str, Any]:
     return _load_json(CONFIG_PATH) or {}
 
 
+def configured_default_provider() -> str:
+    cfg = _config()
+    provider = cfg.get("defaultProvider")
+    if isinstance(provider, str) and provider in PROVIDERS:
+        return provider
+    return DEFAULT_PROVIDER
+
+
+def configured_default_model(provider: str) -> str:
+    cfg = _config()
+    defaults = cfg.get("defaults")
+    if isinstance(defaults, dict):
+        item = defaults.get(provider)
+        if isinstance(item, dict):
+            model = item.get("model")
+            if isinstance(model, str) and model.strip():
+                return model.strip()
+    return default_model(provider)
+
+
+def set_default(provider: str, model: str | None = None) -> dict[str, Any]:
+    cfg = _config()
+    cfg["defaultProvider"] = provider
+    if model and model.strip():
+        defaults = cfg.get("defaults")
+        if not isinstance(defaults, dict):
+            defaults = {}
+        item = defaults.get(provider)
+        if not isinstance(item, dict):
+            item = {}
+        item["model"] = model.strip()
+        defaults[provider] = item
+        cfg["defaults"] = defaults
+    _write_private_json(CONFIG_PATH, cfg)
+    return cfg
+
+
 def _provider_config(provider: str) -> dict[str, Any]:
     cfg = _config()
     providers = cfg.get("providers")
@@ -351,8 +388,8 @@ def main() -> int:
     gen.add_argument("--prompt", required=True, help="Image prompt")
     gen.add_argument("--output", default=DEFAULT_OUTPUT, help="Output image path or directory")
     gen.add_argument("--size", default=DEFAULT_SIZE, help="Image size for OpenAI image endpoint, e.g. 1024x1024")
-    gen.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDERS)
-    gen.add_argument("--model", default=None, help="Model id")
+    gen.add_argument("--provider", default=None, choices=PROVIDERS, help="Provider override for this run; omit to use configured default")
+    gen.add_argument("--model", default=None, help="Model override for this run; omit to use provider default/configured default")
     gen.add_argument("--base-url", default=None, help="Provider base URL")
     gen.add_argument("--api-key", default=None, help="One-shot API key; not saved")
     gen.add_argument("--timeout", type=int, default=600, help="Request timeout seconds")
@@ -368,7 +405,12 @@ def main() -> int:
 
     clearkey = sub.add_parser("clearkey", help="Delete saved Visual Studio API key")
     clearkey.add_argument("--provider", default=None, choices=PROVIDERS)
-    sub.add_parser("status", help="Show whether provider keys are configured without revealing them")
+
+    setdefault = sub.add_parser("set-default", help="Set default provider/model for future generate calls")
+    setdefault.add_argument("--provider", required=True, choices=PROVIDERS)
+    setdefault.add_argument("--model", default=None, help="Optional default model for the provider")
+
+    sub.add_parser("status", help="Show whether provider keys/defaults are configured without revealing keys")
 
     # Backward compatibility: allow old --prompt ... invocation as generate.
     if len(sys.argv) > 1 and sys.argv[1].startswith("--"):
@@ -384,15 +426,21 @@ def main() -> int:
         removed = clear_api_key(args.provider)
         print(json.dumps({"ok": True, "removed": removed, "provider": args.provider, "config": str(CONFIG_PATH)}, ensure_ascii=False, indent=2))
         return 0
+    if args.command == "set-default":
+        set_default(args.provider, args.model)
+        print(json.dumps({"ok": True, "defaultProvider": configured_default_provider(), "defaultModel": configured_default_model(configured_default_provider()), "config": str(CONFIG_PATH)}, ensure_ascii=False, indent=2))
+        return 0
     if args.command == "status":
         cfg = _config()
-        print(json.dumps({"config": str(CONFIG_PATH), "providers": configured_providers(), "baseUrls": {p: resolve_base_url(None, p) for p in PROVIDERS}, "legacyConfig": "apiKey" in cfg}, ensure_ascii=False, indent=2))
+        default_provider = configured_default_provider()
+        print(json.dumps({"config": str(CONFIG_PATH), "providers": configured_providers(), "baseUrls": {p: resolve_base_url(None, p) for p in PROVIDERS}, "defaultProvider": default_provider, "defaultModel": configured_default_model(default_provider), "defaults": cfg.get("defaults") if isinstance(cfg.get("defaults"), dict) else {}, "legacyConfig": "apiKey" in cfg}, ensure_ascii=False, indent=2))
         return 0
     if args.command != "generate":
         parser.print_help()
         return 1
 
-    args.model = args.model or default_model(args.provider)
+    args.provider = args.provider or configured_default_provider()
+    args.model = args.model or configured_default_model(args.provider)
     api_key = resolve_api_key(args.api_key, args.provider)
     if not api_key:
         print(f"ERROR: missing API key. Run: {sys.argv[0]} setkey --provider {args.provider} '<key>'", file=sys.stderr)
