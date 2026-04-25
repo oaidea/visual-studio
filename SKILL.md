@@ -93,8 +93,6 @@ Base URL aliases for `--base-url` and `setkey --base-url`:
 ```text
 opus       -> https://opus.qzz.io/v1
 ojbk       -> https://ojbkapi.com/v1
-codex      -> https://codex.ooooo.codes/v1
-lsj        -> https://ojbkapi.com/v1
 ```
 
 List aliases without revealing keys:
@@ -109,13 +107,13 @@ Examples:
 # Save LSJ/OpenAI-compatible key against the ojbk relay
 python3 scripts/opus_image.py setkey --provider openai-image --base-url ojbk '<api-key>'
 
-# One-shot generation via codex relay without changing saved config
+# One-shot generation via ojbk relay without changing saved config
 python3 scripts/opus_image.py generate \
   --provider vs:gpt \
-  --base-url codex \
+  --base-url ojbk \
   --model gpt-image-2 \
   --prompt '<verbatim user prompt>' \
-  --output /tmp/visual-studio-codex.png
+  --output /tmp/visual-studio-ojbk.png
 ```
 
 ## Opus / gpt-image-2

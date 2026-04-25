@@ -18,12 +18,9 @@ from typing import Any
 DEFAULT_PROVIDER = "openai-image"
 DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
 OJBK_BASE_URL = "https://ojbkapi.com/v1"
-CODEX_BASE_URL = "https://codex.ooooo.codes/v1"
 BASE_URL_ALIASES = {
     "opus": DEFAULT_BASE_URL,
     "ojbk": OJBK_BASE_URL,
-    "codex": CODEX_BASE_URL,
-    "lsj": OJBK_BASE_URL,
 }
 DEFAULT_MODEL = "gpt-image-2"
 DEFAULT_GEMINI_NATIVE_MODEL = "gemini-2.5-flash-image"
@@ -450,7 +447,7 @@ def main() -> int:
     gen.add_argument("--size", default=DEFAULT_SIZE, help="Image size for OpenAI image endpoint, e.g. 1024x1024")
     gen.add_argument("--provider", default=None, choices=PROVIDER_CHOICES, help="Provider override for this run; omit to use configured default. Aliases: vs:gpt, vs:gemini")
     gen.add_argument("--model", default=None, help="Model override for this run; omit to use provider default/configured default")
-    gen.add_argument("--base-url", default=None, help="Provider base URL or alias: opus, ojbk, codex")
+    gen.add_argument("--base-url", default=None, help="Provider base URL or alias: opus, ojbk")
     gen.add_argument("--api-key", default=None, help="One-shot API key; not saved")
     gen.add_argument("--timeout", type=int, default=600, help="Request timeout seconds")
     gen.add_argument("--background", default="opaque", choices=["opaque", "transparent", "auto"])
@@ -470,7 +467,7 @@ def main() -> int:
     setkey = sub.add_parser("setkey", help="Save API key to Visual Studio private config")
     setkey.add_argument("key", help="Provider API key")
     setkey.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDER_CHOICES)
-    setkey.add_argument("--base-url", default=None, help="Base URL to save, or alias: opus, ojbk, codex")
+    setkey.add_argument("--base-url", default=None, help="Base URL to save, or alias: opus, ojbk")
 
     clearkey = sub.add_parser("clearkey", help="Delete saved Visual Studio API key")
     clearkey.add_argument("--provider", default=None, choices=PROVIDER_CHOICES)
