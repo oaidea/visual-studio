@@ -39,6 +39,7 @@ Set keys per provider:
 python3 scripts/opus_image.py setkey --provider openai-image '<opus-api-key>'
 python3 scripts/opus_image.py setkey --provider vivgrid-image '<vivgrid-or-opus-api-key>'
 python3 scripts/opus_image.py setkey --provider gemini-chat '<vivgrid-or-opus-api-key>'
+python3 scripts/opus_image.py setkey --provider gemini-native '<vivgrid-or-opus-api-key>'
 ```
 
 Clear the key:
@@ -75,7 +76,17 @@ Supported defaults:
 
 ## Gemini 3 Pro Preview / vivgrid
 
-Gemini relay endpoint from NewAPI docs (`/v1/chat/completions`):
+Gemini native relay endpoint from NewAPI docs (`/v1beta/models/{model}:generateContent/`):
+
+```bash
+python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
+  --provider gemini-native \
+  --model gemini-3.1-pro-preview \
+  --prompt '<verbatim user prompt>' \
+  --output /tmp/visual-studio-gemini-native-$(date +%Y%m%d-%H%M%S).png
+```
+
+OpenAI chat relay endpoint (`/v1/chat/completions`):
 
 ```bash
 python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
@@ -95,7 +106,7 @@ python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py gene
   --output /tmp/visual-studio-vivgrid-$(date +%Y%m%d-%H%M%S).png
 ```
 
-`gemini-chat` follows the NewAPI Gemini relay docs: request body includes `model`, `stream`, `messages`, Gemini-native `contents`, and optional `extra_body`. For the current Opus/NewAPI relay, `extra_body` includes image-mode compatibility hints (`responseModalities` / `response_modalities` / `modalities`) and `size` when provided. `gemini-chat` and `vivgrid-image` use the same default base URL as Opus: `https://opus.qzz.io/v1`. If the key is saved with `setkey`, omit `--api-key`.
+`gemini-native` follows the NewAPI Gemini native docs: `contents` plus `generationConfig.responseModalities`. The docs also show optional `generationConfig.imageConfig.aspectRatio/imageSize`, but the current relayed `gemini-3.1-pro-preview` rejects inferred aspect ratios, so this script does not send imageConfig by default. `gemini-chat` follows the OpenAI chat-format relay docs: `model`, `stream`, `messages`, Gemini-native `contents`, and optional `extra_body`. `gemini-native` uses base URL `https://opus.qzz.io` by default; `gemini-chat` / `vivgrid-image` use `https://opus.qzz.io/v1`. If the key is saved with `setkey`, omit `--api-key`.
 
 ## Delivery
 
