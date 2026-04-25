@@ -98,7 +98,7 @@ def main() -> int:
     gen.add_argument("--model", default=DEFAULT_MODEL, help="Model id")
     gen.add_argument("--base-url", default=None, help="OpenAI-compatible base URL")
     gen.add_argument("--api-key", default=None, help="One-shot API key; not saved")
-    gen.add_argument("--timeout", type=int, default=240, help="Request timeout seconds")
+    gen.add_argument("--timeout", type=int, default=600, help="Request timeout seconds")
     gen.add_argument("--background", default="opaque", choices=["opaque", "transparent", "auto"])
     gen.add_argument("--moderation", default="low", choices=["low", "auto"])
     gen.add_argument("--output-format", default="png", choices=["png", "webp", "jpeg"])
