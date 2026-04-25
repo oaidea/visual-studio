@@ -37,7 +37,7 @@ Set keys per provider:
 
 ```bash
 python3 scripts/opus_image.py setkey --provider openai-image '<opus-api-key>'
-python3 scripts/opus_image.py setkey --provider vivgrid-image '<vivgrid-api-key>' --base-url '<vivgrid-base-url-with-/v1>'
+python3 scripts/opus_image.py setkey --provider vivgrid-image '<vivgrid-or-opus-api-key>'
 ```
 
 Clear the key:
@@ -80,12 +80,11 @@ Vivgrid image-generation endpoint (`/v1/images/generations`):
 python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
   --provider vivgrid-image \
   --model gemini-3-flash-preview \
-  --base-url '<vivgrid-base-url-with-/v1>' \
   --prompt '<verbatim user prompt>' \
   --output /tmp/visual-studio-vivgrid-$(date +%Y%m%d-%H%M%S).png
 ```
 
-If the vivgrid key/base URL is saved with `setkey`, omit `--base-url` and `--api-key`.
+`vivgrid-image` uses the same default base URL as Opus: `https://opus.qzz.io/v1`. If the key is saved with `setkey`, omit `--api-key`.
 
 ## Delivery
 
