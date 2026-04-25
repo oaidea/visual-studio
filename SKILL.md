@@ -79,7 +79,7 @@ Vivgrid image-generation endpoint (`/v1/images/generations`):
 ```bash
 python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
   --provider vivgrid-image \
-  --model gemini-3-pro-preview \
+  --model gemini-3.1-pro-preview \
   --prompt '<verbatim user prompt>' \
   --output /tmp/visual-studio-vivgrid-$(date +%Y%m%d-%H%M%S).png
 ```

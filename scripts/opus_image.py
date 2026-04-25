@@ -17,7 +17,7 @@ from typing import Any
 DEFAULT_PROVIDER = "openai-image"
 DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
 DEFAULT_MODEL = "gpt-image-2"
-DEFAULT_VIVGRID_MODEL = "gemini-3-pro-preview"
+DEFAULT_VIVGRID_MODEL = "gemini-3.1-pro-preview"
 DEFAULT_VIVGRID_BASE_URL = DEFAULT_BASE_URL
 PROVIDERS = ("openai-image", "vivgrid-image")
 DEFAULT_SIZE = "1024x1024"
