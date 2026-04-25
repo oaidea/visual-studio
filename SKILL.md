@@ -1,11 +1,11 @@
 ---
 name: visual-studio
-description: 视觉工作室。Use when the user asks to generate images via Opus / gpt-image-2 direct API, Gemini 3 Flash Preview / vivgrid, says “用 opus 画图”, “用 gpt-image-2 直连画图”, “用 Gemini 画图”, “视觉工作室”, or wants image generation without OpenClaw's built-in image_generate fallback behavior. Generates images by calling a configured image provider and returns a local image path for channel-aware delivery.
+description: 视觉工作室。Use when the user asks to generate images via Opus / gpt-image-2 direct API, Gemini 3 Pro Preview / vivgrid, says “用 opus 画图”, “用 gpt-image-2 直连画图”, “用 Gemini 画图”, “视觉工作室”, or wants image generation without OpenClaw's built-in image_generate fallback behavior. Generates images by calling a configured image provider and returns a local image path for channel-aware delivery.
 ---
 
 # 视觉工作室 / Visual Studio
 
-Use this skill when the user explicitly asks to use **视觉工作室**, **VS**, **visual-studio**, **opus**, **gpt-image-2 直连**, or **Gemini 3 Flash Preview / vivgrid** for image generation.
+Use this skill when the user explicitly asks to use **视觉工作室**, **VS**, **visual-studio**, **opus**, **gpt-image-2 直连**, or **Gemini 3 Pro Preview / vivgrid** for image generation.
 
 ## Core rules
 
@@ -21,7 +21,7 @@ python3 scripts/opus_image.py generate \
   --size 1024x1024
 ```
 
-Set `--size` only when the user requested a concrete supported size. Use `--provider vivgrid-image` for vivgrid Gemini 3 Flash Preview.
+Set `--size` only when the user requested a concrete supported size. Use `--provider vivgrid-image` for vivgrid Gemini 3 Pro Preview.
 
 ## API key
 
@@ -72,14 +72,14 @@ Supported defaults:
 - moderation: `low`
 - background: `opaque`
 
-## Gemini 3 Flash Preview / vivgrid
+## Gemini 3 Pro Preview / vivgrid
 
 Vivgrid image-generation endpoint (`/v1/images/generations`):
 
 ```bash
 python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
   --provider vivgrid-image \
-  --model gemini-3-flash-preview \
+  --model gemini-3-pro-preview \
   --prompt '<verbatim user prompt>' \
   --output /tmp/visual-studio-vivgrid-$(date +%Y%m%d-%H%M%S).png
 ```
