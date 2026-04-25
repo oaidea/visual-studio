@@ -107,14 +107,6 @@ python3 scripts/opus_image.py generate \
   --size ''
 ```
 
-## Kimi 渠道交付规则
-
-在 Kimi / `kimi-claw` 中交付 Visual Studio 生成图时：
-
-- 不使用 `MEDIA:` 行。
-- 使用本地图片附件单发。
-- 发送成功后最终回复只输出 `NO_REPLY`，避免重复刷屏。
-
 ## 仓库安全
 
 生成图片输出目录已忽略：
