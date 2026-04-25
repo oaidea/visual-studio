@@ -88,6 +88,36 @@ vs:gpt     -> this run only: --provider openai-image --model gpt-image-2
 vs:gemini  -> this run only: --provider gemini-native --model gemini-2.5-flash-image
 ```
 
+Base URL aliases for `--base-url` and `setkey --base-url`:
+
+```text
+opus       -> https://opus.qzz.io/v1
+ojbk       -> https://ojbkapi.com/v1
+codex      -> https://codex.ooooo.codes/v1
+lsj        -> https://ojbkapi.com/v1
+```
+
+List aliases without revealing keys:
+
+```bash
+python3 scripts/opus_image.py baseurls
+```
+
+Examples:
+
+```bash
+# Save LSJ/OpenAI-compatible key against the ojbk relay
+python3 scripts/opus_image.py setkey --provider openai-image --base-url ojbk '<api-key>'
+
+# One-shot generation via codex relay without changing saved config
+python3 scripts/opus_image.py generate \
+  --provider vs:gpt \
+  --base-url codex \
+  --model gpt-image-2 \
+  --prompt '<verbatim user prompt>' \
+  --output /tmp/visual-studio-codex.png
+```
+
 ## Opus / gpt-image-2
 
 ```bash

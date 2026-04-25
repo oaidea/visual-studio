@@ -17,6 +17,14 @@ from typing import Any
 
 DEFAULT_PROVIDER = "openai-image"
 DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
+OJBK_BASE_URL = "https://ojbkapi.com/v1"
+CODEX_BASE_URL = "https://codex.ooooo.codes/v1"
+BASE_URL_ALIASES = {
+    "opus": DEFAULT_BASE_URL,
+    "ojbk": OJBK_BASE_URL,
+    "codex": CODEX_BASE_URL,
+    "lsj": OJBK_BASE_URL,
+}
 DEFAULT_MODEL = "gpt-image-2"
 DEFAULT_GEMINI_NATIVE_MODEL = "gemini-2.5-flash-image"
 PROVIDERS = ("openai-image", "gemini-native")
@@ -130,7 +138,7 @@ def set_api_key(api_key: str, base_url: str | None, provider: str) -> None:
     if provider == "openai-image":
         # Preserve the historic top-level shape for old callers.
         cfg["apiKey"] = key
-        cfg["baseUrl"] = (base_url or DEFAULT_BASE_URL).rstrip("/")
+        cfg["baseUrl"] = normalize_base_url(base_url) or DEFAULT_BASE_URL
     else:
         providers = cfg.get("providers")
         if not isinstance(providers, dict):
@@ -139,7 +147,7 @@ def set_api_key(api_key: str, base_url: str | None, provider: str) -> None:
         if not isinstance(item, dict):
             item = {}
         item["apiKey"] = key
-        item["baseUrl"] = (base_url or default_base_url(provider)).rstrip("/")
+        item["baseUrl"] = normalize_base_url(base_url) or default_base_url(provider)
         providers[provider] = item
         cfg["providers"] = providers
     _write_private_json(CONFIG_PATH, cfg)
@@ -220,9 +228,17 @@ def resolve_api_key(explicit: str | None, provider: str) -> str | None:
     return None
 
 
+def normalize_base_url(value: str | None) -> str | None:
+    if not value or not value.strip():
+        return None
+    raw = value.strip()
+    return BASE_URL_ALIASES.get(raw, raw).rstrip("/")
+
+
 def resolve_base_url(explicit: str | None, provider: str) -> str:
-    if explicit and explicit.strip():
-        return explicit.strip().rstrip("/")
+    normalized = normalize_base_url(explicit)
+    if normalized:
+        return normalized
     cfg = _provider_config(provider)
     base_url = cfg.get("baseUrl")
     if isinstance(base_url, str) and base_url.strip():
@@ -434,7 +450,7 @@ def main() -> int:
     gen.add_argument("--size", default=DEFAULT_SIZE, help="Image size for OpenAI image endpoint, e.g. 1024x1024")
     gen.add_argument("--provider", default=None, choices=PROVIDER_CHOICES, help="Provider override for this run; omit to use configured default. Aliases: vs:gpt, vs:gemini")
     gen.add_argument("--model", default=None, help="Model override for this run; omit to use provider default/configured default")
-    gen.add_argument("--base-url", default=None, help="Provider base URL")
+    gen.add_argument("--base-url", default=None, help="Provider base URL or alias: opus, ojbk, codex")
     gen.add_argument("--api-key", default=None, help="One-shot API key; not saved")
     gen.add_argument("--timeout", type=int, default=600, help="Request timeout seconds")
     gen.add_argument("--background", default="opaque", choices=["opaque", "transparent", "auto"])
@@ -454,7 +470,7 @@ def main() -> int:
     setkey = sub.add_parser("setkey", help="Save API key to Visual Studio private config")
     setkey.add_argument("key", help="Provider API key")
     setkey.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDER_CHOICES)
-    setkey.add_argument("--base-url", default=None, help="Base URL to save")
+    setkey.add_argument("--base-url", default=None, help="Base URL to save, or alias: opus, ojbk, codex")
 
     clearkey = sub.add_parser("clearkey", help="Delete saved Visual Studio API key")
     clearkey.add_argument("--provider", default=None, choices=PROVIDER_CHOICES)
@@ -464,6 +480,8 @@ def main() -> int:
     setdefault.add_argument("--model", default=None, help="Optional default model for the provider")
 
     sub.add_parser("status", help="Show whether provider keys/defaults are configured without revealing keys")
+
+    sub.add_parser("baseurls", help="List built-in base URL aliases")
 
     # Backward compatibility: allow old --prompt ... invocation as generate.
     if len(sys.argv) > 1 and sys.argv[1].startswith("--"):
@@ -495,6 +513,9 @@ def main() -> int:
     if args.command == "set-default":
         set_default(args.provider, args.model)
         print(json.dumps({"ok": True, "defaultProvider": configured_default_provider(), "defaultModel": configured_default_model(configured_default_provider()), "config": str(CONFIG_PATH)}, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "baseurls":
+        print(json.dumps({"aliases": BASE_URL_ALIASES}, ensure_ascii=False, indent=2))
         return 0
     if args.command == "status":
         cfg = _config()
