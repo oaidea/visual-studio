@@ -1,165 +1,133 @@
 ---
 name: visual-studio
-description: 视觉工作室。Use when the user asks to generate images via Opus / gpt-image-2 direct API, Gemini 2.5 Flash Image native relay, says “用 opus 画图”, “用 gpt-image-2 直连画图”, “用 Gemini 画图”, “视觉工作室”, or wants image generation without OpenClaw's built-in image_generate fallback behavior. Generates images by calling a configured image provider and returns a local image path for channel-aware delivery.
+description: Generic direct image generation helper skill. Use when the user explicitly asks to use this repository's direct image workflow, wants configurable third-party image generation outside a built-in fallback tool, or needs provider/model/baseUrl controlled image generation with local file output.
 ---
 
-# 视觉工作室 / Visual Studio
+# Direct Image Generation Helper
 
-Use this skill when the user explicitly asks to use **视觉工作室**, **VS**, **visual-studio**, **opus**, **gpt-image-2 直连**, or **Gemini 2.5 Flash Image** for image generation.
+Use this skill when the user explicitly asks to use this repository's direct image workflow for configurable third-party image generation.
 
 ## Core rules
 
-- Do **not** use OpenClaw's built-in `image_generate` for this workflow.
 - Pass the user's image prompt to the script **verbatim**. Do not rewrite, polish, translate, summarize, or expand it before calling the script.
-- Default can be configured. If no default is configured, VS uses `openai-image` (`gpt-image-2`).
+- Default provider/model can be configured. If no default is configured, the script uses `openai-image` with `gpt-image-2`.
 - Conversational shorthand: `vs` means use the saved default. `vs:gpt` and `vs:gemini` are single-run overrides only; they do **not** change the saved default.
+- Do not store real API keys, real base URLs, or environment-specific values in the repository.
 
-## API key
+## Configuration model
 
-This skill uses its own private config only:
+Configuration is stored outside the repository. Recommended structure:
 
-```text
-~/.openclaw/visual-studio/config.json
+```json
+{
+  "apiKey": "<default-key>",
+  "baseUrl": "<default-base-url>",
+  "defaultProvider": "openai-image",
+  "defaults": {
+    "openai-image": {
+      "model": "gpt-image-2"
+    },
+    "gemini-native": {
+      "model": "gemini-2.5-flash-image"
+    }
+  },
+  "providers": {
+    "openai-image": {},
+    "gemini-native": {
+      "baseUrl": "<gemini-base-url-without-v1>"
+    }
+  }
+}
 ```
 
-Set keys per provider:
+Rules:
+
+- Top-level `apiKey` / `baseUrl` are defaults for all providers.
+- `providers.<name>.apiKey` / `providers.<name>.baseUrl` override only that provider.
+- `defaults.<name>.model` stores the default model for that provider.
+- `gemini-native` base URLs should be stored **without** `/v1`; the script normalizes them when saving.
+
+## Common commands
+
+Check status:
 
 ```bash
-python3 scripts/opus_image.py setkey --provider openai-image '<opus-api-key>'
-python3 scripts/opus_image.py setkey --provider gemini-native '<opus-or-gemini-relay-api-key>'
+python3 scripts/direct_image.py status
 ```
 
-Check status without revealing keys:
+Reset configuration:
 
 ```bash
-python3 scripts/opus_image.py status
+python3 scripts/direct_image.py reset --yes
 ```
 
-Initialize or validate setup after first install/reset:
+Initialize one or more providers with verification-before-save:
 
 ```bash
-python3 scripts/opus_image.py init
+python3 scripts/direct_image.py init \
+  --target openai \
+  --api-key '<api-key>' \
+  --base-url '<openai-base-url>'
+
+python3 scripts/direct_image.py init \
+  --target gemini \
+  --api-key '<api-key>' \
+  --base-url '<gemini-base-url-without-v1>'
+
+python3 scripts/direct_image.py init \
+  --target both \
+  --api-key '<default-api-key>' \
+  --base-url '<default-base-url>'
 ```
 
-If `init` reports `ready: false`, configure at least the current default provider key, then run `init` again.
-
-Reset Visual Studio private config (destructive, requires confirmation):
+Override one provider while keeping top-level defaults:
 
 ```bash
-python3 scripts/opus_image.py reset --yes
-python3 scripts/opus_image.py setkey --provider openai-image '<api-key>'
-python3 scripts/opus_image.py init
+python3 scripts/direct_image.py setkey --provider gemini-native '<api-key>'
+python3 scripts/direct_image.py setbaseurl --provider gemini-native '<gemini-base-url-without-v1>'
 ```
 
-## Defaults and model selection
-
-Set persistent default provider/model:
+Set default model:
 
 ```bash
-python3 scripts/opus_image.py set-default --provider openai-image --model gpt-image-2
-python3 scripts/opus_image.py set-default --provider gemini-native --model gemini-2.5-flash-image
-# Note: set-default uses canonical provider names, not vs:gpt / vs:gemini.
+python3 scripts/direct_image.py set-default --provider openai-image --model gpt-image-2
+python3 scripts/direct_image.py set-default --provider gemini-native --model gemini-2.5-flash-image
 ```
 
-Generate with the saved default:
+Generate with saved default:
 
 ```bash
-python3 scripts/opus_image.py generate \
+python3 scripts/direct_image.py generate \
   --prompt '<verbatim user prompt>' \
-  --output /tmp/visual-studio-$(date +%Y%m%d-%H%M%S).png
+  --output /tmp/direct-image.png
 ```
 
-Temporary override without changing the saved default:
+One-shot provider override:
 
 ```bash
-python3 scripts/opus_image.py generate \
-  --provider vs:gemini \
-  --model gemini-2.5-flash-image \
-  --prompt '<verbatim user prompt>' \
-  --output /tmp/visual-studio-gemini-$(date +%Y%m%d-%H%M%S).png \
-  --size ''
-```
-
-Single-run alias mapping:
-
-```text
-vs         -> use saved default
-vs:gpt     -> this run only: --provider openai-image --model gpt-image-2
-vs:gemini  -> this run only: --provider gemini-native --model gemini-2.5-flash-image
-```
-
-Base URL aliases for `--base-url` and `setkey --base-url`:
-
-```text
-opus       -> https://opus.qzz.io/v1
-ojbk       -> https://ojbkapi.com/v1
-```
-
-List aliases without revealing keys:
-
-```bash
-python3 scripts/opus_image.py baseurls
-```
-
-Examples:
-
-```bash
-# Save LSJ/OpenAI-compatible key against the ojbk relay
-python3 scripts/opus_image.py setkey --provider openai-image --base-url ojbk '<api-key>'
-
-# One-shot generation via ojbk relay without changing saved config
-python3 scripts/opus_image.py generate \
+python3 scripts/direct_image.py generate \
   --provider vs:gpt \
-  --base-url ojbk \
-  --model gpt-image-2 \
   --prompt '<verbatim user prompt>' \
-  --output /tmp/visual-studio-ojbk.png
-```
-
-## Opus / gpt-image-2
-
-```bash
-python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
-  --provider openai-image \
-  --prompt '<verbatim user prompt>' \
-  --output /tmp/visual-studio-$(date +%Y%m%d-%H%M%S).png \
+  --output /tmp/direct-image-gpt.png \
   --size 1024x1024
-```
 
-Defaults:
-
-- model: `gpt-image-2`
-- endpoint: `https://opus.qzz.io/v1/images/generations`
-- output format: `png`
-
-## Gemini native image
-
-Verified working model: `gemini-2.5-flash-image`.
-
-```bash
-python3 /root/.openclaw/workspace/repos/visual-studio/scripts/opus_image.py generate \
-  --provider gemini-native \
+python3 scripts/direct_image.py generate \
+  --provider vs:gemini \
   --prompt '<verbatim user prompt>' \
-  --output /tmp/visual-studio-gemini-native-$(date +%Y%m%d-%H%M%S).png \
-  --size ''
+  --output /tmp/direct-image-gemini.png
 ```
 
-Implementation follows the NewAPI Gemini native docs:
+## Output contract
 
-```text
-POST /v1beta/models/{model}:generateContent/
-body: contents + generationConfig.responseModalities
-```
+Successful runs print localized fields such as:
 
-Do not send inferred `imageConfig.aspectRatio/imageSize` by default; this relay/model may reject aspectRatio even while image generation works without imageConfig.
+- `成功`
+- `图片路径`
+- `提供方`
+- `模型`
+- `尺寸`
+- `返回提示词` (only when actually returned)
+- `用量`
+- `图片链接` (only when a downloadable URL is returned)
 
-Removed unstable Gemini 3.x routes: `/v1/images/generations` and `/v1/chat/completions` variants were tested and deleted because they returned text or external URLs inconsistently for complex prompts.
-
-## Delivery
-
-Delivery is channel-aware:
-
-- **Kimi / `kimi-claw`**: do **not** reply with a `MEDIA:` line for Visual Studio output. Kimi may double-render VS image files when delivered by `MEDIA:`. Send exactly one local image attachment with the `message` tool (`action=send`, `channel=kimi-claw`, `target=main`, `media=<absolute image path>`, `mimeType=image/png` or the real MIME type) and then finish the assistant turn with only `NO_REPLY`.
-- **Other channels / web UI**: reply with one `MEDIA:/absolute/path.png` line.
-
-Never use both `MEDIA:` and a `message` attachment for the same generated image.
+Use the returned local image path for channel-specific delivery.

@@ -16,12 +16,9 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_PROVIDER = "openai-image"
-DEFAULT_BASE_URL = "https://opus.qzz.io/v1"
-OJBK_BASE_URL = "https://ojbkapi.com/v1"
-BASE_URL_ALIASES = {
-    "opus": DEFAULT_BASE_URL,
-    "ojbk": OJBK_BASE_URL,
-}
+OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1"
+GEMINI_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com"
+BASE_URL_ALIASES: dict[str, str] = {}
 DEFAULT_MODEL = "gpt-image-2"
 DEFAULT_GEMINI_NATIVE_MODEL = "gemini-2.5-flash-image"
 PROVIDERS = ("openai-image", "gemini-native")
@@ -97,27 +94,45 @@ def set_default(provider: str, model: str | None = None) -> dict[str, Any]:
 
 def _provider_config(provider: str) -> dict[str, Any]:
     cfg = _config()
+    merged: dict[str, Any] = {}
+
+    top_key = cfg.get("apiKey")
+    if isinstance(top_key, str) and top_key.strip():
+        merged["apiKey"] = top_key.strip()
+
+    top_base_url = cfg.get("baseUrl")
+    if isinstance(top_base_url, str) and top_base_url.strip():
+        merged["baseUrl"] = top_base_url.strip().rstrip("/")
+
     providers = cfg.get("providers")
     if isinstance(providers, dict):
         item = providers.get(provider)
         if isinstance(item, dict):
-            return item
-    # Backward compatibility for the original single Opus key format.
-    if provider == "openai-image":
-        return cfg
+            if isinstance(item.get("apiKey"), str) and item.get("apiKey").strip():
+                merged["apiKey"] = item.get("apiKey").strip()
+            if isinstance(item.get("baseUrl"), str) and item.get("baseUrl").strip():
+                merged["baseUrl"] = item.get("baseUrl").strip().rstrip("/")
+
     if provider == "gemini-native":
-        native_cfg = dict(cfg)
-        base_url = native_cfg.get("baseUrl")
+        base_url = merged.get("baseUrl")
         if isinstance(base_url, str) and base_url.rstrip("/").endswith("/v1"):
-            native_cfg["baseUrl"] = base_url.rstrip("/")[:-3]
-        return native_cfg
-    return {}
+            merged["baseUrl"] = base_url.rstrip("/")[:-3]
+    return merged
 
 
 def default_base_url(provider: str) -> str:
     if provider == "gemini-native":
-        return DEFAULT_BASE_URL.removesuffix("/v1")
-    return DEFAULT_BASE_URL
+        return GEMINI_DEFAULT_BASE_URL
+    return OPENAI_DEFAULT_BASE_URL
+
+
+def normalize_provider_base_url(provider: str | None, value: str | None) -> str | None:
+    normalized = normalize_base_url(value)
+    if not normalized:
+        return None
+    if provider == "gemini-native" and normalized.rstrip("/") == "https://opus.qzz.io/v1":
+        return "https://opus.qzz.io"
+    return normalized
 
 
 def default_model(provider: str) -> str:
@@ -126,48 +141,128 @@ def default_model(provider: str) -> str:
     return DEFAULT_MODEL
 
 
-def set_api_key(api_key: str, base_url: str | None, provider: str) -> None:
+def set_api_key(api_key: str, base_url: str | None, provider: str | None) -> None:
     key = api_key.strip()
     if not key:
         raise ValueError("empty API key")
 
     cfg = _config()
-    if provider == "openai-image":
-        # Preserve the historic top-level shape for old callers.
+    normalized_base_url = normalize_provider_base_url(provider, base_url)
+    if provider is None:
         cfg["apiKey"] = key
-        cfg["baseUrl"] = normalize_base_url(base_url) or DEFAULT_BASE_URL
-    else:
-        providers = cfg.get("providers")
-        if not isinstance(providers, dict):
-            providers = {}
-        item = providers.get(provider)
-        if not isinstance(item, dict):
-            item = {}
-        item["apiKey"] = key
-        item["baseUrl"] = normalize_base_url(base_url) or default_base_url(provider)
-        providers[provider] = item
-        cfg["providers"] = providers
+        if normalized_base_url:
+            cfg["baseUrl"] = normalized_base_url
+            gemini_base_url = normalize_provider_base_url("gemini-native", normalized_base_url)
+            if gemini_base_url and gemini_base_url != normalized_base_url:
+                providers = cfg.get("providers")
+                if not isinstance(providers, dict):
+                    providers = {}
+                item = providers.get("gemini-native")
+                if not isinstance(item, dict):
+                    item = {}
+                item["baseUrl"] = gemini_base_url
+                providers["gemini-native"] = item
+                cfg["providers"] = providers
+        elif not isinstance(cfg.get("baseUrl"), str) or not str(cfg.get("baseUrl")).strip():
+            cfg["baseUrl"] = OPENAI_DEFAULT_BASE_URL
+        _write_private_json(CONFIG_PATH, cfg)
+        return
+
+    providers = cfg.get("providers")
+    if not isinstance(providers, dict):
+        providers = {}
+    item = providers.get(provider)
+    if not isinstance(item, dict):
+        item = {}
+    item["apiKey"] = key
+    if normalized_base_url:
+        item["baseUrl"] = normalized_base_url
+    providers[provider] = item
+    cfg["providers"] = providers
     _write_private_json(CONFIG_PATH, cfg)
+
+
+def set_base_url(base_url: str, provider: str | None) -> None:
+    normalized = normalize_provider_base_url(provider, base_url)
+    if not normalized:
+        raise ValueError("empty base URL")
+
+    cfg = _config()
+    if provider is None:
+        cfg["baseUrl"] = normalized
+        gemini_base_url = normalize_provider_base_url("gemini-native", normalized)
+        if gemini_base_url and gemini_base_url != normalized:
+            providers = cfg.get("providers")
+            if not isinstance(providers, dict):
+                providers = {}
+            item = providers.get("gemini-native")
+            if not isinstance(item, dict):
+                item = {}
+            item["baseUrl"] = gemini_base_url
+            providers["gemini-native"] = item
+            cfg["providers"] = providers
+        _write_private_json(CONFIG_PATH, cfg)
+        return
+
+    providers = cfg.get("providers")
+    if not isinstance(providers, dict):
+        providers = {}
+    item = providers.get(provider)
+    if not isinstance(item, dict):
+        item = {}
+    item["baseUrl"] = normalized
+    providers[provider] = item
+    cfg["providers"] = providers
+    _write_private_json(CONFIG_PATH, cfg)
+
+
+def clear_base_url(provider: str | None) -> bool:
+    if not CONFIG_PATH.exists():
+        return False
+
+    cfg = _config()
+    removed = False
+    if provider is None:
+        if "baseUrl" in cfg:
+            cfg.pop("baseUrl", None)
+            removed = True
+        _write_private_json(CONFIG_PATH, cfg)
+        return removed
+
+    providers = cfg.get("providers")
+    if isinstance(providers, dict) and provider in providers:
+        item = providers.get(provider)
+        if isinstance(item, dict) and "baseUrl" in item:
+            item.pop("baseUrl", None)
+            providers[provider] = item
+            cfg["providers"] = providers
+            removed = True
+    _write_private_json(CONFIG_PATH, cfg)
+    return removed
 
 
 def clear_api_key(provider: str | None) -> bool:
     if not CONFIG_PATH.exists():
         return False
     if provider is None:
-        CONFIG_PATH.unlink()
-        return True
+        cfg = _config()
+        removed = False
+        if "apiKey" in cfg:
+            cfg.pop("apiKey", None)
+            removed = True
+        _write_private_json(CONFIG_PATH, cfg)
+        return removed
 
     cfg = _config()
     removed = False
-    if provider == "openai-image":
-        for key in ("apiKey", "baseUrl"):
-            if key in cfg:
-                cfg.pop(key, None)
-                removed = True
     providers = cfg.get("providers")
     if isinstance(providers, dict) and provider in providers:
-        providers.pop(provider, None)
-        removed = True
+        item = providers.get(provider)
+        if isinstance(item, dict) and "apiKey" in item:
+            item.pop("apiKey", None)
+            providers[provider] = item
+            cfg["providers"] = providers
+            removed = True
     _write_private_json(CONFIG_PATH, cfg)
     return removed
 
@@ -179,11 +274,35 @@ def reset_config() -> bool:
     return False
 
 
-def init_config(openai_key: str | None = None, gemini_key: str | None = None, default_provider: str | None = None, default_model_value: str | None = None) -> dict[str, Any]:
-    if openai_key and openai_key.strip():
-        set_api_key(openai_key, None, "openai-image")
-    if gemini_key and gemini_key.strip():
-        set_api_key(gemini_key, None, "gemini-native")
+def init_config(target: str, api_key: str | None = None, base_url: str | None = None, openai_key: str | None = None, gemini_key: str | None = None, default_provider: str | None = None, default_model_value: str | None = None, openai_base_url: str | None = None, gemini_base_url: str | None = None, timeout: int = 20) -> dict[str, Any]:
+    targets = {
+        "openai": ["openai-image"],
+        "gemini": ["gemini-native"],
+        "both": ["openai-image", "gemini-native"],
+    }[target]
+
+    pending: list[tuple[str, str, str, str]] = []
+    for provider in targets:
+        provider_key = (openai_key if provider == "openai-image" else gemini_key) or api_key
+        provider_base_url = (openai_base_url if provider == "openai-image" else gemini_base_url) or base_url
+        if not (provider_key and provider_key.strip()):
+            raise ValueError(f"missing key for {provider}; pass {'--openai-key' if provider == 'openai-image' else '--gemini-key'} or --api-key")
+        if not (provider_base_url and provider_base_url.strip()):
+            raise ValueError(f"missing base URL for {provider}; pass {'--openai-base-url' if provider == 'openai-image' else '--gemini-base-url'} or --base-url")
+        pending.append((provider, provider_key.strip(), normalize_provider_base_url(provider, provider_base_url) or "", configured_default_model(provider)))
+
+    checks = []
+    for provider, provider_api_key, provider_base_url, model in pending:
+        checks.append(verify_provider_config(provider, provider_api_key, provider_base_url, model, timeout))
+
+    if api_key and api_key.strip():
+        set_api_key(api_key, base_url, None)
+    elif base_url and base_url.strip():
+        set_base_url(base_url, None)
+
+    for provider, provider_api_key, provider_base_url, _model in pending:
+        if provider_api_key != (api_key or "").strip() or provider_base_url != (normalize_provider_base_url(provider, base_url) or ""):
+            set_api_key(provider_api_key, provider_base_url, provider)
     if default_provider:
         set_default(default_provider, default_model_value)
 
@@ -191,18 +310,22 @@ def init_config(openai_key: str | None = None, gemini_key: str | None = None, de
     model = configured_default_model(provider)
     configured = configured_providers()
     missing = [name for name, ok in configured.items() if not ok]
-    ready = bool(configured.get(provider))
+    ready = all(configured.get(name) for name in targets)
     return {
         "ok": ready,
         "ready": ready,
         "config": str(CONFIG_PATH),
+        "初始化目标": target,
         "defaultProvider": provider,
         "defaultModel": model,
         "providers": configured,
+        "baseUrls": {name: resolve_base_url(None, name) for name in PROVIDERS},
+        "checks": checks,
         "missingProviders": missing,
         "nextSteps": [] if ready else [
-            f"python3 scripts/opus_image.py setkey --provider {provider} '<api-key>'",
-            "python3 scripts/opus_image.py init",
+            "python3 scripts/direct_image.py init --target openai --api-key '<api-key>' --base-url opus",
+            "python3 scripts/direct_image.py init --target gemini --api-key '<api-key>' --base-url opus",
+            "python3 scripts/direct_image.py init --target both --api-key '<api-key>' --base-url opus",
         ],
     }
 
@@ -259,6 +382,28 @@ def post_json(url: str, api_key: str, payload: dict[str, Any], timeout: int, pro
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"HTTP {exc.code}: {body[:2000]}") from exc
+
+
+def _healthcheck_url(provider: str, base_url: str, model: str) -> str:
+    if provider == "gemini-native":
+        return base_url.rstrip("/") + f"/v1beta/models/{model}:generateContent/"
+    return base_url.rstrip("/") + "/images/generations"
+
+
+def verify_provider_config(provider: str, api_key: str, base_url: str, model: str, timeout: int) -> dict[str, Any]:
+    url = _healthcheck_url(provider, base_url, model)
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + api_key}, method="HEAD")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            code = getattr(resp, "status", 200)
+            return {"ok": True, "provider": provider, "baseUrl": base_url, "model": model, "status": code, "method": "HEAD"}
+    except urllib.error.HTTPError as exc:
+        if exc.code in (400, 401, 403, 405):
+            return {"ok": True, "provider": provider, "baseUrl": base_url, "model": model, "status": exc.code, "method": "HEAD", "note": "endpoint reachable"}
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"verify {provider} failed (HTTP {exc.code}): {body[:500]}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"verify {provider} failed: {exc}") from exc
 
 
 def _strip_data_url(value: str) -> tuple[str, str | None]:
@@ -447,7 +592,7 @@ def main() -> int:
     gen.add_argument("--size", default=DEFAULT_SIZE, help="Image size for OpenAI image endpoint, e.g. 1024x1024")
     gen.add_argument("--provider", default=None, choices=PROVIDER_CHOICES, help="Provider override for this run; omit to use configured default. Aliases: vs:gpt, vs:gemini")
     gen.add_argument("--model", default=None, help="Model override for this run; omit to use provider default/configured default")
-    gen.add_argument("--base-url", default=None, help="Provider base URL or alias: opus, ojbk")
+    gen.add_argument("--base-url", default=None, help="Provider base URL")
     gen.add_argument("--api-key", default=None, help="One-shot API key; not saved")
     gen.add_argument("--timeout", type=int, default=600, help="Request timeout seconds")
     gen.add_argument("--background", default="opaque", choices=["opaque", "transparent", "auto"])
@@ -456,21 +601,34 @@ def main() -> int:
     gen.add_argument("--count", type=int, default=1)
 
     init = sub.add_parser("init", help="Initialize/check Visual Studio API key configuration")
-    init.add_argument("--openai-key", default=None, help="Optional key for openai-image; prefer setkey to avoid shell history")
-    init.add_argument("--gemini-key", default=None, help="Optional key for gemini-native; prefer setkey to avoid shell history")
+    init.add_argument("--target", required=True, choices=["openai", "gemini", "both"], help="Which provider set to initialize and verify before saving")
+    init.add_argument("--api-key", default=None, help="Default API key for all selected providers unless a provider-specific key overrides it")
+    init.add_argument("--base-url", default=None, help="Default base URL for all selected providers unless a provider-specific base URL overrides it")
+    init.add_argument("--openai-key", default=None, help="Optional override key for openai-image")
+    init.add_argument("--gemini-key", default=None, help="Optional override key for gemini-native")
     init.add_argument("--default-provider", default=None, choices=PROVIDERS)
     init.add_argument("--default-model", default=None)
+    init.add_argument("--openai-base-url", default=None, help="Optional override base URL for openai-image")
+    init.add_argument("--gemini-base-url", default=None, help="Optional override base URL for gemini-native")
+    init.add_argument("--timeout", type=int, default=20, help="Verification request timeout seconds")
 
     reset = sub.add_parser("reset", help="Reset Visual Studio private config; requires --yes")
     reset.add_argument("--yes", action="store_true", help="Confirm deletion of ~/.openclaw/visual-studio/config.json")
 
     setkey = sub.add_parser("setkey", help="Save API key to Visual Studio private config")
     setkey.add_argument("key", help="Provider API key")
-    setkey.add_argument("--provider", default=DEFAULT_PROVIDER, choices=PROVIDER_CHOICES)
-    setkey.add_argument("--base-url", default=None, help="Base URL to save, or alias: opus, ojbk")
+    setkey.add_argument("--provider", default=None, choices=PROVIDER_CHOICES, help="Omit to apply to all providers")
+    setkey.add_argument("--base-url", default=None, help="Base URL to save")
 
     clearkey = sub.add_parser("clearkey", help="Delete saved Visual Studio API key")
     clearkey.add_argument("--provider", default=None, choices=PROVIDER_CHOICES)
+
+    setbaseurl = sub.add_parser("setbaseurl", help="Save provider base URL to Visual Studio private config")
+    setbaseurl.add_argument("base_url", help="Provider base URL")
+    setbaseurl.add_argument("--provider", default=None, choices=PROVIDER_CHOICES, help="Omit to apply to all providers")
+
+    clearbaseurl = sub.add_parser("clearbaseurl", help="Delete saved Visual Studio base URL")
+    clearbaseurl.add_argument("--provider", default=None, choices=PROVIDER_CHOICES)
 
     setdefault = sub.add_parser("set-default", help="Set default provider/model for future generate calls")
     setdefault.add_argument("--provider", required=True, choices=PROVIDERS)
@@ -487,7 +645,11 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "init":
-        result = init_config(args.openai_key, args.gemini_key, args.default_provider, args.default_model)
+        try:
+            result = init_config(args.target, args.api_key, args.base_url, args.openai_key, args.gemini_key, args.default_provider, args.default_model, args.openai_base_url, args.gemini_base_url, args.timeout)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["ready"] else 2
     if args.command == "reset":
@@ -495,16 +657,36 @@ def main() -> int:
             print("ERROR: reset deletes Visual Studio private config; rerun with --yes to confirm", file=sys.stderr)
             return 2
         removed = reset_config()
-        print(json.dumps({"ok": True, "removed": removed, "config": str(CONFIG_PATH), "requiresInit": True, "nextSteps": ["python3 scripts/opus_image.py setkey --provider openai-image '<api-key>'", "python3 scripts/opus_image.py init"]}, ensure_ascii=False, indent=2))
+        print(json.dumps({"ok": True, "removed": removed, "config": str(CONFIG_PATH), "requiresInit": True, "nextSteps": ["python3 scripts/direct_image.py init --target openai --api-key '<api-key>' --base-url opus", "python3 scripts/direct_image.py init --target gemini --api-key '<api-key>' --base-url opus", "python3 scripts/direct_image.py init --target both --api-key '<api-key>' --base-url opus"]}, ensure_ascii=False, indent=2))
         return 0
     if args.command == "setkey":
-        args.provider = normalize_provider(args.provider) or DEFAULT_PROVIDER
+        args.provider = normalize_provider(args.provider)
         set_api_key(args.key, args.base_url, args.provider)
-        print(json.dumps({"ok": True, "provider": args.provider, "config": str(CONFIG_PATH), "baseUrl": resolve_base_url(None, args.provider)}, ensure_ascii=False, indent=2))
+        result = {"ok": True, "provider": args.provider or "all", "config": str(CONFIG_PATH)}
+        if args.provider is None:
+            result["baseUrls"] = {name: resolve_base_url(None, name) for name in PROVIDERS}
+        else:
+            result["baseUrl"] = resolve_base_url(None, args.provider)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "clearkey":
         args.provider = normalize_provider(args.provider)
         removed = clear_api_key(args.provider)
+        print(json.dumps({"ok": True, "removed": removed, "provider": args.provider, "config": str(CONFIG_PATH)}, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "setbaseurl":
+        args.provider = normalize_provider(args.provider)
+        set_base_url(args.base_url, args.provider)
+        result = {"ok": True, "provider": args.provider or "all", "config": str(CONFIG_PATH)}
+        if args.provider is None:
+            result["baseUrls"] = {name: resolve_base_url(None, name) for name in PROVIDERS}
+        else:
+            result["baseUrl"] = resolve_base_url(None, args.provider)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "clearbaseurl":
+        args.provider = normalize_provider(args.provider)
+        removed = clear_base_url(args.provider)
         print(json.dumps({"ok": True, "removed": removed, "provider": args.provider, "config": str(CONFIG_PATH)}, ensure_ascii=False, indent=2))
         return 0
     if args.command == "set-default":
@@ -517,7 +699,12 @@ def main() -> int:
     if args.command == "status":
         cfg = _config()
         default_provider = configured_default_provider()
-        print(json.dumps({"config": str(CONFIG_PATH), "providers": configured_providers(), "baseUrls": {p: resolve_base_url(None, p) for p in PROVIDERS}, "defaultProvider": default_provider, "defaultModel": configured_default_model(default_provider), "defaults": cfg.get("defaults") if isinstance(cfg.get("defaults"), dict) else {}, "legacyConfig": "apiKey" in cfg}, ensure_ascii=False, indent=2))
+        providers_cfg = cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}
+        provider_overrides = {}
+        for name in PROVIDERS:
+            item = providers_cfg.get(name)
+            provider_overrides[name] = bool(isinstance(item, dict) and any(k in item for k in ("apiKey", "baseUrl", "model")))
+        print(json.dumps({"config": str(CONFIG_PATH), "providers": configured_providers(), "baseUrls": {p: resolve_base_url(None, p) for p in PROVIDERS}, "defaultProvider": default_provider, "defaultModel": configured_default_model(default_provider), "defaults": cfg.get("defaults") if isinstance(cfg.get("defaults"), dict) else {}, "usesTopLevelDefaults": bool((isinstance(cfg.get("apiKey"), str) and cfg.get("apiKey").strip()) or (isinstance(cfg.get("baseUrl"), str) and cfg.get("baseUrl").strip())), "providerOverrides": provider_overrides}, ensure_ascii=False, indent=2))
         return 0
     if args.command != "generate":
         parser.print_help()
@@ -543,25 +730,35 @@ def main() -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 3
 
+    revised_prompt = _extract_revised_prompt(obj)
     result = {
-        "ok": True,
-        "path": str(output),
-        "provider": args.provider,
-        "model": args.model,
-        "size": args.size if args.provider in ("openai-image", "gemini-native") else None,
-        "mime": mime,
-        "revised_prompt": _extract_revised_prompt(obj),
-        "usage": obj.get("usage") or obj.get("usageMetadata"),
-        "image_url": obj.get("_downloaded_image_url"),
+        "成功": True,
+        "图片路径": str(output),
+        "提供方": args.provider,
+        "模型": args.model,
+        "尺寸": args.size if args.provider in ("openai-image", "gemini-native") else None,
+        "用量": obj.get("usage") or obj.get("usageMetadata"),
     }
+    if revised_prompt:
+        result["返回提示词"] = revised_prompt
+    if obj.get("_downloaded_image_url"):
+        result["图片链接"] = obj.get("_downloaded_image_url")
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 
 def _extract_revised_prompt(obj: dict[str, Any]) -> Any:
     data = obj.get("data")
-    if isinstance(data, list) and data and isinstance(data[0], dict):
-        return data[0].get("revised_prompt")
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                revised = item.get("revised_prompt") or item.get("revisedPrompt")
+                if isinstance(revised, str) and revised.strip():
+                    return revised
+    if isinstance(obj, dict):
+        revised = obj.get("revised_prompt") or obj.get("revisedPrompt")
+        if isinstance(revised, str) and revised.strip():
+            return revised
     return None
 
 

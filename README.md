@@ -1,149 +1,277 @@
-# Visual Studio / 视觉工作室
+# Direct Image Generation Helper
 
-Visual Studio 是一个本地图片生成辅助项目，用于在 OpenClaw 外部直连图像接口生成图片，并返回本地文件路径，方便按不同渠道交付。
+This project provides a local helper for generating images through configurable third-party image providers and returning a local file path for downstream delivery.
 
-> 这里的 Visual Studio 不是微软 Visual Studio，而是“视觉工作室”。
+## Entry points
 
-## 生成入口说明
-
-| 短指令 | Provider | 默认模型 | 说明 |
+| Shortcut | Provider | Default model | Description |
 | --- | --- | --- | --- |
-| `vs` | 当前保存的默认 | 当前保存的默认 | 使用配置里的默认 provider/model |
-| `vs:gpt` | `openai-image` | `gpt-image-2` | 单次使用图片接口，不改变默认 |
-| `vs:gemini` | `gemini-native` | `gemini-2.5-flash-image` | 单次使用图片接口，不改变默认 |
+| `vs` | saved default | saved default | Use the configured default provider/model |
+| `vs:gpt` | `openai-image` | `gpt-image-2` | One-shot override for the OpenAI-style image provider |
+| `vs:gemini` | `gemini-native` | `gemini-2.5-flash-image` | One-shot override for the Gemini-style image provider |
 
-内置 baseUrl 别名：
+Notes:
 
-| 别名 | URL |
-| --- | --- |
-| `opus` | `https://opus.qzz.io/v1` |
-| `ojbk` | `https://ojbkapi.com/v1` |
+- `openai-image` typically uses an OpenAI-compatible image endpoint.
+- `gemini-native` should be saved and resolved with a base URL **without** `/v1` only for the `https://opus.qzz.io/v1` pattern; in that specific case the script normalizes it when saving.
+- When a global default base URL is saved without specifying a provider, the script keeps that value at the top level and automatically writes a Gemini-specific override only for the `https://opus.qzz.io/v1` case.
 
-当前默认若未配置，脚本使用：
+If no default is configured, the script uses:
 
 ```text
 openai-image / gpt-image-2
 ```
 
-## 初始化与重置
-
-检查当前配置是否可用：
-
-```bash
-python3 scripts/opus_image.py init
-```
-
-查看状态（不会打印密钥）：
-
-```bash
-python3 scripts/opus_image.py status
-```
-
-设置 API key：
-
-```bash
-python3 scripts/opus_image.py setkey --provider openai-image '<api-key>'
-python3 scripts/opus_image.py setkey --provider gemini-native '<api-key>'
-```
-
-设置 API key 并指定 baseUrl 别名：
-
-```bash
-python3 scripts/opus_image.py setkey --provider openai-image --base-url ojbk '<api-key>'
-```
-
-查看内置 baseUrl 别名：
-
-```bash
-python3 scripts/opus_image.py baseurls
-```
-
-重置私有配置：
-
-```bash
-python3 scripts/opus_image.py reset --yes
-```
-
-私有配置保存于仓库外：
+Script entry:
 
 ```text
-~/.openclaw/visual-studio/config.json
+python3 scripts/direct_image.py
 ```
 
-不要把 API key 写进仓库文件。
+## Configuration structure
 
-## 默认模型设置
+Configuration is stored outside the repository and should be supplied by each user for their own environment.
 
-设置默认走 GPT 图片接口：
+Do not commit real API keys, base URLs, or any environment-specific values into the repository.
+
+Recommended structure: **top-level defaults + provider overrides**
+
+```json
+{
+  "apiKey": "<default-key>",
+  "baseUrl": "<default-base-url>",
+  "defaultProvider": "openai-image",
+  "defaults": {
+    "openai-image": {
+      "model": "gpt-image-2"
+    },
+    "gemini-native": {
+      "model": "gemini-2.5-flash-image"
+    }
+  },
+  "providers": {
+    "openai-image": {},
+    "gemini-native": {
+      "baseUrl": "<gemini-base-url-without-v1>"
+    }
+  }
+}
+```
+
+Rules:
+
+- top-level `apiKey` / `baseUrl` = defaults for all providers
+- `providers.<name>.apiKey` / `providers.<name>.baseUrl` = provider-specific overrides
+- `defaults.<name>.model` = default model for that provider
+- missing overrides inherit the top-level defaults
+
+## Initialize and reset
+
+Check current status without revealing secrets:
 
 ```bash
-python3 scripts/opus_image.py set-default \
+python3 scripts/direct_image.py status
+```
+
+Reset configuration:
+
+```bash
+python3 scripts/direct_image.py reset --yes
+```
+
+### Strict initialization
+
+Initialization requires an explicit target:
+
+- `openai`
+- `gemini`
+- `both`
+
+You can:
+
+- use `--api-key` / `--base-url` as defaults for all selected providers
+- override individual providers with:
+  - `--openai-key` / `--openai-base-url`
+  - `--gemini-key` / `--gemini-base-url`
+- initialization verifies connectivity before saving
+
+Initialize openai only:
+
+```bash
+python3 scripts/direct_image.py init \
+  --target openai \
+  --api-key '<api-key>' \
+  --base-url '<openai-base-url>'
+```
+
+Initialize gemini only:
+
+```bash
+python3 scripts/direct_image.py init \
+  --target gemini \
+  --api-key '<api-key>' \
+  --base-url '<gemini-base-url-without-v1>'
+```
+
+Initialize both with one default:
+
+```bash
+python3 scripts/direct_image.py init \
+  --target both \
+  --api-key '<default-api-key>' \
+  --base-url '<default-base-url>'
+```
+
+Initialize both with a gemini-specific base URL:
+
+```bash
+python3 scripts/direct_image.py init \
+  --target both \
+  --api-key '<default-api-key>' \
+  --base-url '<default-openai-base-url>' \
+  --gemini-base-url '<gemini-base-url-without-v1>'
+```
+
+## Set key / base URL
+
+### Apply to all providers by default
+
+Set default key:
+
+```bash
+python3 scripts/direct_image.py setkey '<api-key>'
+```
+
+Set default base URL:
+
+```bash
+python3 scripts/direct_image.py setbaseurl '<base-url>'
+```
+
+### Apply to one provider only
+
+Set key for openai only:
+
+```bash
+python3 scripts/direct_image.py setkey --provider openai-image '<api-key>'
+```
+
+Set key for gemini only:
+
+```bash
+python3 scripts/direct_image.py setkey --provider gemini-native '<api-key>'
+```
+
+Set base URL for openai only:
+
+```bash
+python3 scripts/direct_image.py setbaseurl --provider openai-image '<openai-base-url>'
+```
+
+Set base URL for gemini only:
+
+```bash
+python3 scripts/direct_image.py setbaseurl --provider gemini-native '<gemini-base-url-without-v1>'
+```
+
+Clear default key / base URL:
+
+```bash
+python3 scripts/direct_image.py clearkey
+python3 scripts/direct_image.py clearbaseurl
+```
+
+Clear one provider override:
+
+```bash
+python3 scripts/direct_image.py clearkey --provider gemini-native
+python3 scripts/direct_image.py clearbaseurl --provider gemini-native
+```
+
+## Default models
+
+Set default OpenAI-style image model:
+
+```bash
+python3 scripts/direct_image.py set-default \
   --provider openai-image \
   --model gpt-image-2
 ```
 
-设置默认走 Gemini 图片接口：
+Set default Gemini-style image model:
 
 ```bash
-python3 scripts/opus_image.py set-default \
+python3 scripts/direct_image.py set-default \
   --provider gemini-native \
   --model gemini-2.5-flash-image
 ```
 
-注意：
+Notes:
 
-- `vs` 表示使用当前保存的默认。
-- `vs:gpt` / `vs:gemini` 只表示单次指定，不改变默认。
-- `set-default` 使用正式 provider 名：`openai-image` 或 `gemini-native`。
+- `vs` uses the saved default
+- `vs:gpt` / `vs:gemini` are one-shot overrides only
+- `set-default` uses canonical provider names: `openai-image`, `gemini-native`
 
-## 生成图片
+## Generate images
 
-使用当前默认：
+Use the saved default:
 
 ```bash
-python3 scripts/opus_image.py generate \
-  --prompt '<原样提示词>' \
-  --output /tmp/visual-studio.png
+python3 scripts/direct_image.py generate \
+  --prompt '<verbatim prompt>' \
+  --output /tmp/direct-image.png
 ```
 
-单次指定 GPT 图片接口：
+One-shot OpenAI-style image generation:
 
 ```bash
-python3 scripts/opus_image.py generate \
+python3 scripts/direct_image.py generate \
   --provider vs:gpt \
-  --prompt '<原样提示词>' \
-  --output /tmp/visual-studio-gpt.png \
+  --prompt '<verbatim prompt>' \
+  --output /tmp/direct-image-gpt.png \
   --size 1024x1024
 ```
 
-单次指定 GPT 图片接口和 baseUrl：
+One-shot OpenAI-style generation with explicit base URL:
 
 ```bash
-python3 scripts/opus_image.py generate \
+python3 scripts/direct_image.py generate \
   --provider vs:gpt \
-  --base-url ojbk \
+  --base-url '<openai-base-url>' \
   --model gpt-image-2 \
-  --prompt '<原样提示词>' \
-  --output /tmp/visual-studio-gpt-ojbk.png \
+  --prompt '<verbatim prompt>' \
+  --output /tmp/direct-image-gpt.png \
   --size 1024x1024
 ```
 
-单次指定 Gemini 图片接口：
+One-shot Gemini-style image generation:
 
 ```bash
-python3 scripts/opus_image.py generate \
+python3 scripts/direct_image.py generate \
   --provider vs:gemini \
-  --prompt '<原样提示词>' \
-  --output /tmp/visual-studio-gemini.png \
-  --size ''
+  --prompt '<verbatim prompt>' \
+  --output /tmp/direct-image-gemini.png
 ```
 
-## 仓库安全
+## Result output
 
-生成图片输出目录已忽略：
+On success, the script prints localized fields such as:
+
+- `成功`
+- `图片路径`
+- `提供方`
+- `模型`
+- `尺寸`
+- `返回提示词` (only when the provider actually returns one)
+- `用量`
+- `图片链接` (only when a downloadable URL is returned)
+
+## Repository safety
+
+Generated images are ignored under:
 
 ```text
 outputs/
 ```
 
-API key 保存在仓库外，不应提交到 Git。
+Never commit API keys, real base URLs, or environment-specific values into the repository.
