@@ -1,3 +1,4 @@
 # Generated Visual Studio image outputs
 outputs/
 *.tmp
+__pycache__/

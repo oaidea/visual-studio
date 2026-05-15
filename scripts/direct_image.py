@@ -13,6 +13,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+# Rate limiter
+_SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(_SCRIPT_DIR))
+from rate_limit import check as rate_check, record as rate_record
 from typing import Any
 
 DEFAULT_PROVIDER = "openai-image"
@@ -528,15 +533,38 @@ def generate_openai_image(args: argparse.Namespace, api_key: str) -> tuple[dict[
         "moderation": args.moderation,
         "background": args.background,
     }
+    # 参考图片支持
+    if getattr(args, "image", None):
+        image_ref = args.image
+        if image_ref.startswith(("http://", "https://")):
+            payload["image"] = image_ref
+        elif image_ref.startswith("data:"):
+            payload["image"] = image_ref
+        else:
+            # 本地文件 → base64 data URL
+            image_path = Path(image_ref)
+            if not image_path.is_file():
+                raise RuntimeError(f"image file not found: {image_ref}")
+            data = image_path.read_bytes()
+            suffix = image_path.suffix.lower()
+            mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
+            mime = mime_map.get(suffix, "image/png")
+            b64 = base64.b64encode(data).decode("ascii")
+            payload["image"] = f"data:{mime};base64,{b64}"
     base_url = resolve_base_url(args.base_url, args.provider)
     if not base_url:
         raise RuntimeError(f"missing base URL for provider {args.provider}; pass --base-url or save one with setkey")
     url = base_url + "/images/generations"
     obj = post_json(url, api_key, payload, args.timeout, args.provider)
     b64, mime = _find_b64_image(obj.get("data") or obj)
-    if not b64:
-        raise RuntimeError("response has no image base64 data")
-    return obj, b64, mime
+    if b64:
+        return obj, b64, mime
+    # 回退：尝试 URL 格式的响应
+    image_url = _find_image_url(obj)
+    if image_url:
+        output = download_image(image_url, args.output, args.timeout, args.output_format)
+        return {**obj, "_downloaded_image_url": image_url, "_downloaded_path": str(output)}, "", "url"
+    raise RuntimeError("response has no image base64 data or image URL")
 
 
 
@@ -599,6 +627,7 @@ def main() -> int:
     gen.add_argument("--moderation", default="low", choices=["low", "auto"])
     gen.add_argument("--output-format", default="png", choices=["png", "webp", "jpeg"])
     gen.add_argument("--count", type=int, default=1)
+    gen.add_argument("--image", default=None, help="Reference image URL or local file path")
 
     init = sub.add_parser("init", help="Initialize/check Visual Studio API key configuration")
     init.add_argument("--target", required=True, choices=["openai", "gemini", "both"], help="Which provider set to initialize and verify before saving")
@@ -635,6 +664,7 @@ def main() -> int:
     setdefault.add_argument("--model", default=None, help="Optional default model for the provider")
 
     sub.add_parser("status", help="Show whether provider keys/defaults are configured without revealing keys")
+    sub.add_parser("rate", help="Show rate limit usage")
 
     sub.add_parser("baseurls", help="List built-in base URL aliases")
 
@@ -706,6 +736,10 @@ def main() -> int:
             provider_overrides[name] = bool(isinstance(item, dict) and any(k in item for k in ("apiKey", "baseUrl", "model")))
         print(json.dumps({"config": str(CONFIG_PATH), "providers": configured_providers(), "baseUrls": {p: resolve_base_url(None, p) for p in PROVIDERS}, "defaultProvider": default_provider, "defaultModel": configured_default_model(default_provider), "defaults": cfg.get("defaults") if isinstance(cfg.get("defaults"), dict) else {}, "usesTopLevelDefaults": bool((isinstance(cfg.get("apiKey"), str) and cfg.get("apiKey").strip()) or (isinstance(cfg.get("baseUrl"), str) and cfg.get("baseUrl").strip())), "providerOverrides": provider_overrides}, ensure_ascii=False, indent=2))
         return 0
+    if args.command == "rate":
+        from rate_limit import status as rate_status
+        print(json.dumps(rate_status(), ensure_ascii=False, indent=2))
+        return 0
     if args.command != "generate":
         parser.print_help()
         return 1
@@ -716,6 +750,13 @@ def main() -> int:
     if not api_key:
         print(f"ERROR: missing API key. Run: {sys.argv[0]} setkey --provider {args.provider} '<key>'", file=sys.stderr)
         return 2
+
+    # 频率限制检查
+    blocked = rate_check("image")
+    if blocked:
+        print(json.dumps(blocked, ensure_ascii=False, indent=2), file=sys.stderr)
+        print(f"ERROR: 频率限制 — {blocked['blocked']} 已用 {blocked['used']}/{blocked['limit']}", file=sys.stderr)
+        return 4
 
     try:
         if args.provider == "gemini-native":
@@ -743,6 +784,9 @@ def main() -> int:
         result["返回提示词"] = revised_prompt
     if obj.get("_downloaded_image_url"):
         result["图片链接"] = obj.get("_downloaded_image_url")
+    # 记录用量
+    usage = rate_record("image")
+    result["频率限制"] = usage
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
